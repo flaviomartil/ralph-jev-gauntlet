@@ -157,6 +157,8 @@ cargo test -p ralph-core completion_judge
 node --test jev/test/*.test.mjs
 ```
 
+The Node suite has about 1,850 tests: fixed tables for known edge cases, plus seeded property cases that check requirement parsing, the Jev screen, the blind verdict rules and critic output parsing against an independent oracle. The end-to-end tests run the real judge against temporary git repositories with a scripted critic, so they check snapshots, blind worktrees, champion promotion, cleanup, and that your workspace and index are left untouched.
+
 ## Credits
 
 - The Ralph loop technique, for the fresh-context agent loop.

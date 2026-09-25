@@ -1,29 +1,69 @@
-const MAX_CRITERIA = 12;
-const BULLET = /^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?(.+?)\s*$/;
-const HEADING = /^\s*#{1,6}\s+(.*)$/;
+export const MAX_CRITERIA = 12;
+const BULLET = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/;
+const CHECKBOX = /^\[[ xX]\](?:\s+|$)/;
+const RULE_ONLY = /^[-*_\s]+$/;
+const ATX_HEADING = /^\s*#{1,6}\s+(.*?)\s*#*\s*$/;
+const BOLD_HEADING = /^\s*(?:\*\*|__)(.+?)(?:\*\*|__)\s*:?\s*$/;
+const LABEL_LINE = /^[^\s\-*+#][^:]*:\s*$/;
 const CRITERIA_HEADING = /(acceptance criteria|crit[eé]rios? de aceite|definition of done|requirements|requisitos)/i;
 
+export function bulletText(line) {
+  const m = String(line).match(BULLET);
+  if (!m) return null;
+  const text = m[1].replace(CHECKBOX, "").trim();
+  if (!text || RULE_ONLY.test(text) || /^\[[ xX]\]$/.test(text)) return null;
+  return text;
+}
+
+export function headingText(line) {
+  const atx = String(line).match(ATX_HEADING);
+  if (atx) return atx[1];
+  const bold = String(line).match(BOLD_HEADING);
+  return bold ? bold[1] : null;
+}
+
+function isLabel(line) {
+  return LABEL_LINE.test(line) && bulletText(line) === null;
+}
+
 function bullets(lines) {
-  return lines.map((l) => l.match(BULLET)?.[1]).filter(Boolean);
+  return lines.map(bulletText).filter((t) => t !== null);
+}
+
+export function criteriaSection(lines) {
+  const start = lines.findIndex((l) => {
+    const title = headingText(l) ?? (isLabel(l) ? l : null);
+    return title !== null && CRITERIA_HEADING.test(title);
+  });
+  if (start < 0) return null;
+  const found = [];
+  for (const line of lines.slice(start + 1)) {
+    if (headingText(line) !== null || isLabel(line)) break;
+    const text = bulletText(line);
+    if (text !== null) {
+      found.push(text);
+      continue;
+    }
+    if (found.length && line.trim() && !/^\s/.test(line)) break;
+  }
+  return found;
 }
 
 export function parseCriteria({ criteriaFile, objective }) {
   if (criteriaFile) {
-    const found = bullets(criteriaFile.split("\n"));
+    const found = bullets(String(criteriaFile).split(/\r?\n/));
     if (found.length) return found.slice(0, MAX_CRITERIA);
   }
-  const lines = String(objective || "").split("\n");
-  const start = lines.findIndex((l) => CRITERIA_HEADING.test(l) && (HEADING.test(l) || /:\s*$/.test(l)));
-  if (start >= 0) {
-    const section = [];
-    for (const line of lines.slice(start + 1)) {
-      if (HEADING.test(line)) break;
-      section.push(line);
-    }
-    const found = bullets(section);
-    if (found.length) return found.slice(0, MAX_CRITERIA);
-  }
-  const checkboxes = lines.map((l) => l.match(/^\s*[-*]\s+\[[ xX]\]\s+(.+?)\s*$/)?.[1]).filter(Boolean);
+  const lines = String(objective || "").split(/\r?\n/);
+  const section = criteriaSection(lines);
+  if (section?.length) return section.slice(0, MAX_CRITERIA);
+  const checkboxes = lines
+    .filter((l) => {
+      const m = l.match(BULLET);
+      return m && CHECKBOX.test(m[1]);
+    })
+    .map(bulletText)
+    .filter((t) => t !== null);
   if (checkboxes.length) return checkboxes.slice(0, MAX_CRITERIA);
   const text = String(objective || "").trim();
   return text ? [text.slice(0, 1000)] : [];
@@ -94,37 +134,61 @@ Finish with exactly one line of JSON and nothing after it:
 Report "criteria" for Version A${versions.length > 1 ? " and for Version B (one entry per requirement per version)" : ""}. "pick" is ${versions.length > 1 ? '"A", "B" or "tie"' : '"A"'}. "beats_bar" is ${bar ? "true or false" : "null"}.`;
 }
 
-export function parseCriticOutput(text) {
-  const lines = String(text || "").split("\n").map((l) => l.trim()).filter(Boolean);
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i].replace(/^```(?:json)?|```$/g, "").trim();
-    if (!line.startsWith("{")) continue;
-    try {
-      const parsed = JSON.parse(line);
-      if (Array.isArray(parsed.criteria)) return parsed;
-    } catch {}
+const MAX_PARSE_ATTEMPTS = 5000;
+
+export function balancedObjectAt(text, start) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
   }
-  const match = String(text || "").match(/\{[\s\S]*"criteria"[\s\S]*\}/g);
-  if (match) {
+  return null;
+}
+
+export function parseCriticOutput(text) {
+  const source = String(text ?? "");
+  let attempts = 0;
+  for (let i = source.lastIndexOf("{"); i >= 0 && attempts < MAX_PARSE_ATTEMPTS; i = source.lastIndexOf("{", i - 1), attempts++) {
+    const candidate = balancedObjectAt(source, i);
+    if (!candidate) continue;
     try {
-      const parsed = JSON.parse(match[match.length - 1]);
-      if (Array.isArray(parsed.criteria)) return parsed;
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object" && Array.isArray(parsed.criteria)) return parsed;
     } catch {}
+    if (i === 0) break;
   }
   throw new Error("critic produced no verdict JSON");
 }
 
+function label(value) {
+  return typeof value === "string" ? value.trim().toUpperCase() : null;
+}
+
 export function decide({ critic, criteria, labels, hasBar, allowTie }) {
-  const mine = critic.criteria.filter((c) => !c.version || c.version === labels.candidate);
+  const entries = Array.isArray(critic?.criteria) ? critic.criteria.filter((c) => c && typeof c === "object") : [];
+  const mine = entries.filter((c) => c.version === undefined || c.version === null || label(c.version) === labels.candidate);
   const failed = criteria
     .map((text, i) => {
-      const entry = mine.find((c) => c.id === `c${i + 1}`);
-      return entry && entry.pass === true ? null : { id: `c${i + 1}`, text, evidence: entry?.evidence || "not reported" };
+      const entry = mine.find((c) => String(c.id ?? "").trim().toLowerCase() === `c${i + 1}`);
+      return entry && entry.pass === true ? null : { id: `c${i + 1}`, text, evidence: entry?.evidence ?? "not reported" };
     })
     .filter(Boolean);
-  const pick = critic.pick;
-  const candidateWon = !labels.champion || pick === labels.candidate || (allowTie && pick === "tie");
-  const beatsBar = !hasBar || critic.beats_bar === true;
+  const pick = label(critic?.pick);
+  const candidateWon = !labels.champion || pick === labels.candidate || (allowTie === true && pick === "TIE");
+  const beatsBar = !hasBar || critic?.beats_bar === true;
   const promote = !labels.champion || pick === labels.candidate;
   const problems = [];
   if (failed.length) {
@@ -132,7 +196,8 @@ export function decide({ critic, criteria, labels, hasBar, allowTie }) {
   }
   if (!candidateWon) problems.push("critic: blind comparison preferred the previous best attempt, so this attempt regressed");
   if (!beatsBar) problems.push("critic: does not beat the quality bar yet");
-  const defects = (critic.defects || []).slice(0, 5).map((d) => truncate(String(d), 200));
+  const rawDefects = Array.isArray(critic?.defects) ? critic.defects : typeof critic?.defects === "string" ? [critic.defects] : [];
+  const defects = rawDefects.filter((d) => d !== null && d !== undefined && String(d).trim()).slice(0, 5).map((d) => truncate(String(d), 200));
   if (problems.length && defects.length) problems.push(`defects: ${defects.join(" | ")}`);
   return {
     verdict: problems.length ? "fail" : "pass",
@@ -141,7 +206,7 @@ export function decide({ critic, criteria, labels, hasBar, allowTie }) {
   };
 }
 
-function truncate(text, max) {
+export function truncate(text, max) {
   const s = String(text);
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
