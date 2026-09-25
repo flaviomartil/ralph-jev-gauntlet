@@ -33,6 +33,17 @@ jobs:
       - name: Check formatting
         run: ./scripts/ci-rust-gate.sh --skip-embedded-files --skip-clippy --skip-tests --skip-hooks-bdd --skip-mock-e2e
 
+  jev-scripts:
+    name: Jev scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run gauntlet tests
+        run: node --test jev/test/*.test.mjs
+
   test:
     name: Test
     runs-on: ubuntu-latest

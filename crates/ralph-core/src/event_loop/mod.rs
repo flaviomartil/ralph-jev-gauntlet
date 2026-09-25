@@ -2223,7 +2223,7 @@ impl EventLoop {
         if judge.command.is_empty() {
             return None;
         }
-        if self.state.judge_rejections >= judge.max_rejections {
+        if judge.max_rejections > 0 && self.state.judge_rejections >= judge.max_rejections {
             warn!(
                 rejections = self.state.judge_rejections,
                 "Completion judge rejection budget exhausted - accepting completion"

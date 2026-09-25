@@ -20,9 +20,9 @@ exclude = [
 edition = "2024"
 version = "2.10.1"
 license = "MIT"
-repository = "https://github.com/flaviomartil/ralph-jev"
-homepage = "https://github.com/flaviomartil/ralph-jev"
-description = "ralph-jev - agent loop with a Jev completion judge"
+repository = "https://github.com/flaviomartil/ralph-jev-gauntlet"
+homepage = "https://github.com/flaviomartil/ralph-jev-gauntlet"
+description = "ralph-jev-gauntlet - agent loop with a Jev screen and a blind critic gate"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -1,0 +1,22 @@
+event_loop:
+  completion_judge:
+    command: ["ralph-gauntlet-judge"]
+    timeout_seconds: 900
+    max_rejections: 0
+    fail_closed: false
+
+hooks:
+  enabled: true
+  events:
+    pre.loop.start:
+      - name: jev-triage
+        command: ["ralph-jev-hook", "triage"]
+        on_error: warn
+        mutate:
+          enabled: true
+    pre.iteration.start:
+      - name: jev-progress
+        command: ["ralph-jev-hook", "progress"]
+        on_error: warn
+        mutate:
+          enabled: true

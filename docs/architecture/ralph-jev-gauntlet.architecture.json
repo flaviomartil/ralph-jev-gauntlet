@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "ralph-jev Architecture",
+    "title": "ralph-jev-gauntlet Architecture",
     "output": "architecture.html",
     "quality_profile": "showcase",
     "views": [
@@ -21,16 +21,16 @@
       },
       {
         "id": "gate",
-        "label": "Jev decisions",
+        "label": "Gauntlet gate",
         "focus": [
           "core",
           "gate",
           "judge",
-          "hook",
           "jev",
-          "workspace"
+          "critic",
+          "champion"
         ],
-        "note": "Jev judges completion claims, triages the objective at start and watches each iteration for stalls."
+        "note": "Jev screens every requirement cheaply; only then a fresh critic agent compares the attempt blind against the best one so far."
       },
       {
         "id": "surfaces",
@@ -54,7 +54,7 @@
       "sublabel": "prompt / spec",
       "pos": [
         40,
-        300
+        450
       ],
       "size": [
         130,
@@ -64,11 +64,11 @@
     {
       "id": "cli",
       "type": "frontend",
-      "label": "ralph-jev CLI",
+      "label": "Gauntlet CLI",
       "sublabel": "run / plan / loops",
       "pos": [
         240,
-        300
+        450
       ],
       "size": [
         140,
@@ -82,7 +82,7 @@
       "sublabel": "ratatui",
       "pos": [
         240,
-        110
+        260
       ],
       "size": [
         140,
@@ -96,7 +96,7 @@
       "sublabel": "human-in-the-loop",
       "pos": [
         40,
-        110
+        260
       ],
       "size": [
         130,
@@ -110,7 +110,7 @@
       "sublabel": "React + Fastify",
       "pos": [
         240,
-        470
+        620
       ],
       "size": [
         140,
@@ -124,7 +124,7 @@
       "sublabel": "hats / tasks / memories",
       "pos": [
         460,
-        300
+        450
       ],
       "size": [
         160,
@@ -139,7 +139,7 @@
       "sublabel": "backend PTY",
       "pos": [
         700,
-        300
+        450
       ],
       "size": [
         140,
@@ -153,7 +153,7 @@
       "sublabel": "Claude / Codex / Gemini",
       "pos": [
         920,
-        300
+        450
       ],
       "size": [
         160,
@@ -167,7 +167,7 @@
       "sublabel": "events / tasks / memory",
       "pos": [
         460,
-        470
+        620
       ],
       "size": [
         160,
@@ -181,7 +181,7 @@
       "sublabel": "code + commits",
       "pos": [
         920,
-        470
+        620
       ],
       "size": [
         160,
@@ -195,25 +195,25 @@
       "sublabel": "completion_judge",
       "pos": [
         460,
-        110
+        260
       ],
       "size": [
         160,
         60
       ],
-      "tag": "fail-open"
+      "tag": "max_rejections: 0"
     },
     {
       "id": "judge",
       "type": "backend",
-      "label": "ralph-jev-judge",
-      "sublabel": "Node, zero deps",
+      "label": "ralph-gauntlet-judge",
+      "sublabel": "Jev + critic",
       "pos": [
         700,
-        110
+        260
       ],
       "size": [
-        140,
+        160,
         60
       ]
     },
@@ -224,7 +224,7 @@
       "sublabel": "noul judgments",
       "pos": [
         920,
-        110
+        260
       ],
       "size": [
         160,
@@ -238,13 +238,42 @@
       "sublabel": "triage / progress",
       "pos": [
         700,
-        620
+        770
       ],
       "size": [
         140,
         60
       ],
       "tag": "lifecycle hooks"
+    },
+    {
+      "id": "critic",
+      "type": "external",
+      "label": "Critic Agent",
+      "sublabel": "claude / codex, fresh context",
+      "pos": [
+        690,
+        110
+      ],
+      "size": [
+        180,
+        60
+      ],
+      "tag": "blind A/B"
+    },
+    {
+      "id": "champion",
+      "type": "database",
+      "label": "refs/gauntlet/champion",
+      "sublabel": "best attempt so far",
+      "pos": [
+        920,
+        110
+      ],
+      "size": [
+        180,
+        60
+      ]
     }
   ],
   "boundaries": [
@@ -301,7 +330,7 @@
       "toSide": "top",
       "labelAt": [
         1000,
-        415
+        565
       ]
     },
     {
@@ -313,7 +342,7 @@
       "toSide": "top",
       "labelAt": [
         540,
-        415
+        565
       ]
     },
     {
@@ -376,13 +405,27 @@
       "via": [
         [
           1120,
-          650
+          800
         ],
         [
           1120,
-          140
+          290
         ]
       ]
+    },
+    {
+      "id": "judge-critic",
+      "from": "judge",
+      "to": "critic",
+      "label": "worktrees A/B",
+      "variant": "emphasis"
+    },
+    {
+      "id": "champion-critic",
+      "from": "champion",
+      "to": "critic",
+      "label": "baseline",
+      "variant": "dashed"
     }
   ],
   "cards": [
@@ -397,20 +440,20 @@
     },
     {
       "dot": "rose",
-      "title": "Jev Decisions",
+      "title": "Gauntlet Gate",
       "items": [
-        "Completion judge: objective_met, verified, gap",
-        "Triage at loop start: difficulty, ambiguity",
-        "Progress watchdog each iteration: stalled"
+        "Jev: one noul per requirement plus verified",
+        "Critic: separate agent runs checks, picks blind A vs B",
+        "Pass needs every requirement and a win over the champion"
       ]
     },
     {
       "dot": "orange",
-      "title": "Safety",
+      "title": "Brakes",
       "items": [
-        "Fail-open on Jev errors unless fail_closed",
-        "max_rejections bounds rejections",
-        "Circuit breaker on 429 and 5xx"
+        "max_rejections: 0 loops until the critic approves",
+        "max_iterations and max_cost_usd still stop the run",
+        "Jev outage skips to the critic; critic outage fails open"
       ]
     }
   ]

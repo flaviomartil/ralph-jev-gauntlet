@@ -5424,3 +5424,21 @@ fn test_completion_judge_error_fails_open() {
         Some(TerminationReason::CompletionPromise)
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn test_completion_judge_zero_max_rejections_is_unlimited() {
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let (mut event_loop, events_path) = judge_loop(
+        &temp_dir,
+        "echo '{\"verdict\":\"fail\",\"reason\":\"no\"}'",
+        0,
+    );
+
+    for attempt in 1..=5 {
+        write_event_to_jsonl(&events_path, "LOOP_COMPLETE", "Done");
+        let _ = event_loop.process_events_from_jsonl();
+        assert_eq!(event_loop.check_completion_event(), None);
+        assert_eq!(event_loop.state.judge_rejections, attempt);
+    }
+}
