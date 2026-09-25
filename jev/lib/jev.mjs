@@ -89,9 +89,15 @@ export function noul(answers, id) {
   return value;
 }
 
+export function parsePayload(raw) {
+  const text = String(raw ?? "").trim();
+  if (!text) return {};
+  const parsed = JSON.parse(text);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+}
+
 export function readStdinJson() {
-  const raw = readFileSync(0, "utf8");
-  return JSON.parse(raw || "{}");
+  return parsePayload(readFileSync(0, "utf8"));
 }
 
 export function sh(cwd, cmd, args) {

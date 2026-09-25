@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { askJev, fail, readStdinJson } from "./lib/jev.mjs";
+import { askJev, readStdinJson } from "./lib/jev.mjs";
 import { MODES } from "./lib/hooks.mjs";
 
 const mode = MODES[process.argv[2]];
@@ -24,4 +24,8 @@ askJev(state, mode.questions)
     process.stdout.write(`${JSON.stringify({ metadata })}\n`);
     process.exit(blocking ? 1 : 0);
   })
-  .catch((e) => fail(`ralph-jev-hook ${process.argv[2]}`, e));
+  .catch((e) => {
+    process.stderr.write(`ralph-jev ${process.argv[2]}: Jev unavailable (${e.message}), skipping\n`);
+    process.stdout.write(`${JSON.stringify({ metadata: { skipped: true, error: e.message } })}\n`);
+    process.exit(0);
+  });

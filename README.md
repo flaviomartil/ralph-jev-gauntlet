@@ -68,7 +68,7 @@ Whenever the attempt wins the blind pick, it becomes the new champion, so every 
 | Triage | `pre.loop.start` | `difficulty` (score), `ambiguous` (noul) | Warns when `max_iterations` is low or the objective has no definition of done |
 | Progress watchdog | `pre.iteration.start` | `stalled` (noul) | Flags a loop that keeps repeating the same step or failure |
 
-Both run through `ralph-jev-hook <triage|progress>`. They write their scores to hook metadata, print a warning on stderr, and exit non-zero when their threshold is crossed. `on_error` (`warn`, `block` or `suspend`) decides what happens next.
+Both run through `ralph-jev-hook <triage|progress>`. They write their scores to hook metadata, print a warning on stderr, and exit non-zero when their threshold is crossed. If Jev is unavailable or returns an incomplete answer, they skip with exit 0 so an outage never blocks the loop. `on_error` (`warn`, `block` or `suspend`) decides what happens next.
 
 ## Install
 
@@ -157,7 +157,14 @@ cargo test -p ralph-core completion_judge
 node --test jev/test/*.test.mjs
 ```
 
-The Node suite has about 1,850 tests: fixed tables for known edge cases, plus seeded property cases that check requirement parsing, the Jev screen, the blind verdict rules and critic output parsing against an independent oracle. The end-to-end tests run the real judge against temporary git repositories with a scripted critic, so they check snapshots, blind worktrees, champion promotion, cleanup, and that your workspace and index are left untouched.
+The Node suite has about 3,850 tests:
+
+- **Tables** for known edge cases.
+- **Seeded property tests** that check requirement parsing, the Jev screen, the verdict rules and critic output parsing against an independent oracle.
+- **Fuzz tests** on random and corrupted input: parsers never crash and only return well-formed results.
+- **Metamorphic tests**: swapping the A/B labels never changes a verdict, entry order and wording don't matter, and more evidence never makes a verdict worse.
+- **Process tests** that run the real CLIs against a local fake Jev server and check exit codes, stdout contracts and circuit breaker behavior.
+- **Git end-to-end tests** with a scripted critic. They cover snapshots, blind worktrees, champion promotion, cleanup, concurrent runs and unusual file names, and check that your workspace and index are left untouched.
 
 ## Credits
 
