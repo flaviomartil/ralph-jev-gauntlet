@@ -105,6 +105,11 @@ fn resolve_loop_id(
     })
 }
 
+fn write_objective_marker(ctx: &ralph_core::LoopContext, objective: &str) -> std::io::Result<()> {
+    fs::create_dir_all(ctx.ralph_dir())?;
+    fs::write(ctx.ralph_dir().join("current-objective.md"), objective)
+}
+
 /// Core loop implementation supporting both fresh start and continue modes.
 ///
 /// # Arguments
@@ -196,6 +201,8 @@ pub async fn run_loop_impl(
     let loop_id = resolve_loop_id(&ctx, resume, resume_loop_id.as_deref());
     let loop_id_marker = ctx.ralph_dir().join("current-loop-id");
     fs::write(&loop_id_marker, &loop_id).context("Failed to write current-loop-id marker")?;
+    write_objective_marker(&ctx, &prompt_content)
+        .context("Failed to write current-objective marker")?;
     debug!(loop_id = %loop_id, marker = ?loop_id_marker, "Wrote loop ID marker file");
 
     // For fresh runs (not resume), generate a unique timestamped events file
@@ -6448,6 +6455,52 @@ mod tests {
         assert_eq!(context_window_for_backend(&config, "kiro"), 0);
         assert_eq!(context_window_for_backend(&config, "pi"), 200_000);
         assert_eq!(context_window_for_backend(&config, "claude"), 200_000);
+    }
+
+    #[test]
+    fn test_write_objective_marker_keeps_full_objective() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let ctx = ralph_core::LoopContext::primary(temp.path().to_path_buf());
+        let objective = format!("# Goal\n\n{}\n- [ ] done", "x".repeat(5000));
+
+        write_objective_marker(&ctx, &objective).unwrap();
+
+        let written =
+            std::fs::read_to_string(temp.path().join(".ralph/current-objective.md")).unwrap();
+        assert_eq!(written, objective);
+    }
+
+    #[test]
+    fn test_write_objective_marker_uses_worktree_workspace() {
+        let repo = tempfile::TempDir::new().unwrap();
+        let worktree = repo.path().join(".worktrees/brave-otter");
+        let ctx = ralph_core::LoopContext::worktree(
+            "brave-otter".to_string(),
+            worktree.clone(),
+            repo.path().to_path_buf(),
+        );
+
+        write_objective_marker(&ctx, "worktree objective").unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(worktree.join(".ralph/current-objective.md")).unwrap(),
+            "worktree objective"
+        );
+        assert!(!repo.path().join(".ralph/current-objective.md").exists());
+    }
+
+    #[test]
+    fn test_write_objective_marker_overwrites_previous_run() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let ctx = ralph_core::LoopContext::primary(temp.path().to_path_buf());
+
+        write_objective_marker(&ctx, "first objective that is much longer").unwrap();
+        write_objective_marker(&ctx, "second").unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(temp.path().join(".ralph/current-objective.md")).unwrap(),
+            "second"
+        );
     }
 
     #[test]

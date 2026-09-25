@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "ralph-jev-gauntlet Judge Evidence",
+    "output": "judge-evidence.html",
+    "viewBox": [
+      940,
+      780
+    ],
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "collect",
+        "label": "Collect",
+        "focus": [
+          "loop",
+          "judge",
+          "git"
+        ],
+        "note": "The judge reads what actually happened: commits, status and changed files."
+      },
+      {
+        "id": "verify",
+        "label": "Verify",
+        "focus": [
+          "judge",
+          "verify",
+          "loop"
+        ],
+        "note": "The project's own checks run first; a failing run rejects without asking Jev."
+      },
+      {
+        "id": "judge",
+        "label": "Judge",
+        "focus": [
+          "judge",
+          "redact",
+          "jev",
+          "loop"
+        ],
+        "note": "Only redacted state reaches Jev; its probabilities become the verdict."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "loop",
+      "type": "backend",
+      "label": "Event Loop",
+      "sublabel": "completion gate"
+    },
+    {
+      "id": "judge",
+      "type": "security",
+      "label": "Judge",
+      "sublabel": "gauntlet"
+    },
+    {
+      "id": "git",
+      "type": "database",
+      "label": "Git",
+      "sublabel": "workspace"
+    },
+    {
+      "id": "verify",
+      "type": "backend",
+      "label": "Checks",
+      "sublabel": "e.g. npm test"
+    },
+    {
+      "id": "redact",
+      "type": "security",
+      "label": "Redactor",
+      "sublabel": "secret masking"
+    },
+    {
+      "id": "jev",
+      "type": "cloud",
+      "label": "Jev",
+      "sublabel": "typed judgments"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 290,
+      "label": "Collect"
+    },
+    {
+      "from": 300,
+      "to": 430,
+      "label": "Verify"
+    },
+    {
+      "from": 450,
+      "to": 720,
+      "label": "Judge"
+    }
+  ],
+  "messages": [
+    {
+      "id": "invoke",
+      "from": "loop",
+      "to": "judge",
+      "y": 180,
+      "label": "objective + closed tasks",
+      "variant": "security"
+    },
+    {
+      "id": "git",
+      "from": "judge",
+      "to": "git",
+      "y": 225,
+      "label": "log, status, changed files",
+      "variant": "default"
+    },
+    {
+      "id": "git-back",
+      "from": "git",
+      "to": "judge",
+      "y": 265,
+      "label": "evidence",
+      "variant": "return"
+    },
+    {
+      "id": "verify",
+      "from": "judge",
+      "to": "verify",
+      "y": 320,
+      "label": "RALPH_JEV_VERIFY_CMD",
+      "variant": "emphasis"
+    },
+    {
+      "id": "verify-back",
+      "from": "verify",
+      "to": "judge",
+      "y": 360,
+      "label": "exit code + output tail",
+      "variant": "return"
+    },
+    {
+      "id": "fast-fail",
+      "from": "judge",
+      "to": "loop",
+      "y": 410,
+      "label": "checks fail: reject now",
+      "variant": "dashed"
+    },
+    {
+      "id": "redact",
+      "from": "judge",
+      "to": "redact",
+      "y": 470,
+      "label": "state for Jev",
+      "variant": "default"
+    },
+    {
+      "id": "redact-back",
+      "from": "redact",
+      "to": "judge",
+      "y": 510,
+      "label": "tokens and keys masked",
+      "variant": "return"
+    },
+    {
+      "id": "ask",
+      "from": "judge",
+      "to": "jev",
+      "y": 570,
+      "label": "met? verified? what is missing?",
+      "variant": "emphasis"
+    },
+    {
+      "id": "probs",
+      "from": "jev",
+      "to": "judge",
+      "y": 610,
+      "label": "probabilities + gap",
+      "variant": "return"
+    },
+    {
+      "id": "verdict",
+      "from": "judge",
+      "to": "loop",
+      "y": 680,
+      "label": "{verdict, reason}",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "loop",
+      "from": 175,
+      "to": 690,
+      "type": "backend"
+    },
+    {
+      "participant": "judge",
+      "from": 175,
+      "to": 685,
+      "type": "security"
+    },
+    {
+      "participant": "verify",
+      "from": 315,
+      "to": 365,
+      "type": "backend"
+    },
+    {
+      "participant": "jev",
+      "from": 565,
+      "to": 615,
+      "type": "cloud"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Evidence, not claims",
+      "items": [
+        "Commits, status and changed files come from git",
+        "Closed tasks and recent events come from .ralph",
+        "The agent's own summary is not trusted"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Checks first",
+      "items": [
+        "RALPH_JEV_VERIFY_CMD runs before Jev",
+        "A failing check rejects immediately",
+        "Its output tail goes into the reason"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Safe by default",
+      "items": [
+        "Secrets are masked before any request",
+        "Timeouts kill the whole process group",
+        "Jev errors fail open unless fail_closed is set"
+      ]
+    }
+  ]
+}

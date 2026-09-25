@@ -240,6 +240,25 @@ for (const failure of [429, 500, "network"]) {
   });
 }
 
+for (const mode of ["triage", "progress"]) {
+  test(`ralph-jev-hook ${mode} uses the worktree loop objective`, async () => {
+    answers({ difficulty: { score: 1 }, ambiguous: { noul: 0.1 }, stalled: { noul: 0.1 } });
+    const root = initRepo(scratchDir("ws"));
+    mkdirSync(join(root, ".ralph"));
+    writeFileSync(join(root, ".ralph", "loop.lock"), JSON.stringify({ pid: 1, started: "now", prompt: "primary loop objective" }));
+    const wt = join(root, ".worktrees", "brave-otter");
+    mkdirSync(join(wt, ".ralph"), { recursive: true });
+    const objective = `Worktree objective\n\n## Acceptance criteria\n- [ ] ${"b".repeat(150)}`;
+    writeFileSync(join(wt, ".ralph", "current-objective.md"), objective);
+    requests.length = 0;
+    const payload = { ...hookPayload(wt, 5, 30), loop: { id: "brave-otter", workspace: wt, repo_root: root, is_primary: false } };
+    const out = await run(HOOK, [mode], payload, { RALPH_JEV_PROGRESS_MIN_ITERATION: "1" });
+    assert.equal(out.code, 0, out.stderr);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].body.state.objective, objective);
+  });
+}
+
 test("ralph-jev-hook skips when Jev returns an incomplete answer", async () => {
   answers({});
   const out = await run(HOOK, ["progress"], hookPayload(initRepo(scratchDir("ws"))));

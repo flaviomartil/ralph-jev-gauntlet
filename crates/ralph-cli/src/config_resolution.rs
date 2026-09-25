@@ -1,12 +1,23 @@
 use anyhow::{Context, Result};
 use ralph_core::RalphConfig;
 use serde_yaml::Value;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use crate::ConfigSource;
 
 pub(crate) fn default_user_config_path() -> Option<PathBuf> {
-    user_config_path_from_home(home_dir_from_env().as_deref())
+    user_config_path(
+        std::env::var_os("RALPH_USER_CONFIG"),
+        home_dir_from_env().as_deref(),
+    )
+}
+
+fn user_config_path(override_path: Option<OsString>, home: Option<&Path>) -> Option<PathBuf> {
+    match override_path {
+        Some(path) if !path.is_empty() => Some(PathBuf::from(path)),
+        _ => user_config_path_from_home(home),
+    }
 }
 
 pub(crate) fn user_config_label_if_exists() -> Option<String> {
@@ -128,6 +139,44 @@ mod tests {
         let path = user_config_path_from_home(Some(Path::new("/tmp/test-home")))
             .expect("path should exist");
         assert_eq!(path, PathBuf::from("/tmp/test-home/.ralph/config.yml"));
+    }
+
+    #[test]
+    fn user_config_override_wins_over_home() {
+        let path = user_config_path(
+            Some(OsString::from("/opt/cfg/gauntlet.yml")),
+            Some(Path::new("/tmp/test-home")),
+        );
+        assert_eq!(path, Some(PathBuf::from("/opt/cfg/gauntlet.yml")));
+    }
+
+    #[test]
+    fn empty_user_config_override_falls_back_to_home() {
+        let path = user_config_path(Some(OsString::new()), Some(Path::new("/tmp/test-home")));
+        assert_eq!(
+            path,
+            Some(PathBuf::from("/tmp/test-home/.ralph/config.yml"))
+        );
+    }
+
+    #[test]
+    fn user_config_override_works_without_home() {
+        assert_eq!(
+            user_config_path(Some(OsString::from("cfg.yml")), None),
+            Some(PathBuf::from("cfg.yml"))
+        );
+        assert_eq!(user_config_path(None, None), None);
+    }
+
+    #[test]
+    fn missing_user_config_override_file_loads_nothing() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let missing = dir.path().join("absent.yml");
+        assert!(
+            load_optional_user_config_value_from(Some(&missing))
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

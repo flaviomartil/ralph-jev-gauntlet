@@ -23,6 +23,7 @@ fn ralph_hooks_validate_with_home(temp_path: &Path, home_path: &Path, args: &[&s
         .current_dir(temp_path)
         .env("HOME", home_path)
         .env("USERPROFILE", home_path)
+        .env_remove("RALPH_USER_CONFIG")
         .env("NO_COLOR", "1")
         .output()
         .expect("Failed to execute ralph hooks validate command")

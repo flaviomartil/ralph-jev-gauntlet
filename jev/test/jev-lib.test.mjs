@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { askJev, circuitOpen, envNumber, jevConfig, loadApiKey, loopObjective, noul, readEnvKey, recentEvents, tail, taskCounts, tripCircuit } from "../lib/jev.mjs";
+import { askJev, EXIT_GRACE_MS, circuitOpen, envNumber, jevConfig, loadApiKey, loopObjective, noul, readEnvKey, runGroup, recentEvents, tail, taskCounts, tripCircuit } from "../lib/jev.mjs";
 import { int, pick, rng, scratchDir, sentence } from "./helpers.mjs";
 
 const envCases = [
@@ -346,6 +346,57 @@ test("loopObjective falls back to PROMPT.md when the lock has no prompt", () => 
   assert.equal(loopObjective(workspace({ ".ralph/loop.lock": "{}", "PROMPT.md": "file" })), "file");
 });
 
+const LOCK = JSON.stringify({ pid: 1, started: "x", prompt: "lock summary" });
+const REGISTRY = (entries) => JSON.stringify({ loops: entries });
+
+test("loopObjective prefers the full objective marker over the loop lock", () => {
+  const full = `# Goal\n\n${"a".repeat(3000)}`;
+  assert.equal(loopObjective(workspace({ ".ralph/current-objective.md": full, ".ralph/loop.lock": LOCK, "PROMPT.md": "file" })), full);
+});
+
+test("loopObjective ignores a blank objective marker", () => {
+  assert.equal(loopObjective(workspace({ ".ralph/current-objective.md": " \n\t", ".ralph/loop.lock": LOCK })), "lock summary");
+});
+
+test("loopObjective reads a worktree loop's own marker, not the main repo lock", () => {
+  const root = workspace({ ".ralph/loop.lock": LOCK, "PROMPT.md": "repo prompt" });
+  const wt = join(root, ".worktrees", "brave-otter");
+  mkdirSync(join(wt, ".ralph"), { recursive: true });
+  writeFileSync(join(wt, ".ralph", "current-objective.md"), "worktree objective");
+  writeFileSync(join(wt, "PROMPT.md"), "repo prompt");
+  assert.equal(loopObjective(wt, { id: "brave-otter", repo_root: root }), "worktree objective");
+});
+
+test("loopObjective falls back to the loop registry entry for a worktree loop", () => {
+  const root = workspace({ ".ralph/loops.json": REGISTRY([{ id: "other", prompt: "someone else" }, { id: "brave-otter", prompt: "registry objective" }]) });
+  const wt = join(root, ".worktrees", "brave-otter");
+  mkdirSync(wt, { recursive: true });
+  writeFileSync(join(wt, "PROMPT.md"), "repo prompt");
+  assert.equal(loopObjective(wt, { id: "brave-otter", repo_root: root }), "registry objective");
+});
+
+for (const [label, loop, files] of [
+  ["an unknown loop id", { id: "missing", repo_root: null }, { ".ralph/loops.json": REGISTRY([{ id: "x", prompt: "p" }]) }],
+  ["no loop id", { repo_root: null }, { ".ralph/loops.json": REGISTRY([{ id: "x", prompt: "p" }]) }],
+  ["a corrupt registry", { id: "x", repo_root: null }, { ".ralph/loops.json": "{not json" }],
+  ["a registry without loops", { id: "x", repo_root: null }, { ".ralph/loops.json": "{}" }],
+  ["a registry with loops as an object", { id: "x", repo_root: null }, { ".ralph/loops.json": '{"loops":{"x":{"prompt":"p"}}}' }],
+  ["an entry without a prompt", { id: "x", repo_root: null }, { ".ralph/loops.json": REGISTRY([{ id: "x" }]) }],
+  ["null entries", { id: "x", repo_root: null }, { ".ralph/loops.json": REGISTRY([null, 3, "x"]) }],
+  ["a non-string repo root", { id: "x", repo_root: 42 }, {}],
+  ["a missing loop", undefined, {}],
+  ["a null loop", null, {}],
+]) {
+  test(`loopObjective falls back to PROMPT.md with ${label}`, () => {
+    const root = workspace(files);
+    const wt = join(root, "wt");
+    mkdirSync(wt);
+    writeFileSync(join(wt, "PROMPT.md"), "file");
+    const target = loop && loop.repo_root === null ? { ...loop, repo_root: root } : loop;
+    assert.equal(loopObjective(wt, target), "file");
+  });
+}
+
 test("loopObjective is empty when nothing exists", () => {
   assert.equal(loopObjective(workspace({})), "");
 });
@@ -372,3 +423,28 @@ for (let i = 0; i < 20; i++) {
     assert.deepEqual(taskCounts(workspace({ ".ralph/agent/tasks.jsonl": lines.join("\n") })), expected);
   });
 }
+
+function blockEventLoop(ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {}
+}
+
+test("runGroup keeps the output when the event loop is blocked around exit", async () => {
+  for (let i = 0; i < 5; i++) {
+    const pending = runGroup("sh", ["-c", `echo '{"verdict":${i}}'`], { cwd: scratchDir("rg"), env: process.env, timeoutMs: 20000 });
+    await new Promise((r) => setTimeout(r, 50));
+    blockEventLoop(400);
+    const res = await pending;
+    assert.equal(res.code, 0);
+    assert.equal(res.stdout.trim(), `{"verdict":${i}}`);
+  }
+});
+
+test("runGroup returns after the grace period when a background child never closes the pipe", async () => {
+  const started = Date.now();
+  const res = await runGroup("sh", ["-c", "echo out; sleep 30 & exit 0"], { cwd: scratchDir("rg"), env: process.env, timeoutMs: 60000 });
+  const elapsed = Date.now() - started;
+  assert.equal(res.code, 0);
+  assert.match(res.stdout, /out/);
+  assert.ok(elapsed >= EXIT_GRACE_MS && elapsed < EXIT_GRACE_MS + 5000, `elapsed ${elapsed}`);
+});

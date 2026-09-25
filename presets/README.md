@@ -44,10 +44,7 @@ ralph run -c ralph.yml -H builtin:pdd-to-code-assist -p "Build a new import pipe
 
 ## Examples Instead of Builtins
 
-Example workflow patterns now live in the docs rather than as shipped preset files. See:
-
-- `docs/examples/`
-- `presets/COLLECTION.md`
+Example workflow patterns are described in `presets/COLLECTION.md` rather than shipped as preset files.
 
 ## Importing External Presets
 

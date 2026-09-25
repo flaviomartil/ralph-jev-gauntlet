@@ -183,14 +183,38 @@ export function recentEvents(workspace, count = 15) {
     .filter(Boolean);
 }
 
-export function loopObjective(workspace) {
-  const lock = join(workspace, ".ralph", "loop.lock");
-  if (existsSync(lock)) {
+function readJson(path) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function registryPrompt(loop) {
+  const id = typeof loop?.id === "string" ? loop.id : "";
+  const root = typeof loop?.repo_root === "string" ? loop.repo_root : "";
+  if (!id || !root) return "";
+  const loops = readJson(join(root, ".ralph", "loops.json"))?.loops;
+  const entry = Array.isArray(loops) ? loops.find((l) => l?.id === id) : null;
+  return entry?.prompt ? String(entry.prompt) : "";
+}
+
+export function loopObjective(workspace, loop = {}) {
+  const marker = join(workspace, ".ralph", "current-objective.md");
+  if (existsSync(marker)) {
     try {
-      const { prompt } = JSON.parse(readFileSync(lock, "utf8"));
-      if (prompt) return String(prompt);
+      const text = readFileSync(marker, "utf8");
+      if (text.trim()) return text;
     } catch {}
   }
+  const lock = join(workspace, ".ralph", "loop.lock");
+  if (existsSync(lock)) {
+    const prompt = readJson(lock)?.prompt;
+    if (prompt) return String(prompt);
+  }
+  const fromRegistry = registryPrompt(loop);
+  if (fromRegistry) return fromRegistry;
   const promptFile = join(workspace, "PROMPT.md");
   return existsSync(promptFile) ? readFileSync(promptFile, "utf8") : "";
 }
@@ -230,6 +254,8 @@ export function killActiveGroups() {
   for (const child of activeGroups) killGroup(child);
   activeGroups.clear();
 }
+
+export const EXIT_GRACE_MS = 200;
 
 export function runGroup(command, args, { cwd, env, input = "", timeoutMs, maxOutput = 32 * 1024 * 1024 }) {
   return new Promise((resolvePromise) => {
@@ -274,7 +300,7 @@ export function runGroup(command, args, { cwd, env, input = "", timeoutMs, maxOu
     child.stdin.on("error", () => {});
     child.on("error", (error) => finish({ code: null, signal: null, timedOut, error, output, stdout, stderr }));
     child.on("exit", (code, signal) => {
-      setTimeout(() => finish({ code, signal, timedOut, error: null, output, stdout, stderr }), 200);
+      setTimeout(() => setImmediate(() => finish({ code, signal, timedOut, error: null, output, stdout, stderr })), EXIT_GRACE_MS);
     });
     child.on("close", (code, signal) => finish({ code, signal, timedOut, error: null, output, stdout, stderr }));
     child.stdin.end(input);

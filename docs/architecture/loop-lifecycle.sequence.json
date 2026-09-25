@@ -1,0 +1,279 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "ralph-jev-gauntlet Loop Lifecycle",
+    "output": "loop-lifecycle.html",
+    "viewBox": [
+      960,
+      920
+    ],
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "start",
+        "label": "Triage",
+        "focus": [
+          "you",
+          "loop",
+          "hooks",
+          "jev"
+        ],
+        "note": "Before the first iteration Jev rates difficulty and whether the objective has a checkable definition of done."
+      },
+      {
+        "id": "iterations",
+        "label": "Iterations",
+        "focus": [
+          "loop",
+          "agent",
+          "hooks",
+          "jev"
+        ],
+        "note": "Each iteration gets a fresh prompt; from iteration 3 Jev checks whether the loop is stalled."
+      },
+      {
+        "id": "completion",
+        "label": "Completion",
+        "focus": [
+          "agent",
+          "loop",
+          "judge",
+          "you"
+        ],
+        "note": "LOOP_COMPLETE only ends the loop when the judge passes it."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "you",
+      "type": "external",
+      "label": "You",
+      "sublabel": "ralph run -p"
+    },
+    {
+      "id": "loop",
+      "type": "backend",
+      "label": "Event Loop",
+      "sublabel": "ralph-core"
+    },
+    {
+      "id": "hooks",
+      "type": "security",
+      "label": "Jev hooks",
+      "sublabel": "ralph-jev-hook"
+    },
+    {
+      "id": "jev",
+      "type": "cloud",
+      "label": "Jev",
+      "sublabel": "typed judgments"
+    },
+    {
+      "id": "agent",
+      "type": "external",
+      "label": "Agent",
+      "sublabel": "Claude, Codex, ..."
+    },
+    {
+      "id": "judge",
+      "type": "security",
+      "label": "Judge",
+      "sublabel": "gauntlet"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 360,
+      "label": "Start"
+    },
+    {
+      "from": 380,
+      "to": 640,
+      "label": "Iterations"
+    },
+    {
+      "from": 660,
+      "to": 840,
+      "label": "Completion"
+    }
+  ],
+  "messages": [
+    {
+      "id": "run",
+      "from": "you",
+      "to": "loop",
+      "y": 180,
+      "label": "objective",
+      "variant": "emphasis"
+    },
+    {
+      "id": "triage",
+      "from": "loop",
+      "to": "hooks",
+      "y": 220,
+      "label": "pre.loop.start",
+      "variant": "default"
+    },
+    {
+      "id": "ask-triage",
+      "from": "hooks",
+      "to": "jev",
+      "y": 260,
+      "label": "difficulty? ambiguous?",
+      "variant": "emphasis"
+    },
+    {
+      "id": "triage-probs",
+      "from": "jev",
+      "to": "hooks",
+      "y": 300,
+      "label": "score + probability",
+      "variant": "return"
+    },
+    {
+      "id": "triage-warn",
+      "from": "hooks",
+      "to": "loop",
+      "y": 340,
+      "label": "warnings + metadata",
+      "variant": "return"
+    },
+    {
+      "id": "prompt",
+      "from": "loop",
+      "to": "agent",
+      "y": 410,
+      "label": "fresh prompt, iteration N",
+      "variant": "emphasis"
+    },
+    {
+      "id": "work",
+      "from": "agent",
+      "to": "loop",
+      "y": 460,
+      "label": "commits + events",
+      "variant": "return"
+    },
+    {
+      "id": "progress",
+      "from": "loop",
+      "to": "hooks",
+      "y": 510,
+      "label": "pre.iteration.start",
+      "variant": "default"
+    },
+    {
+      "id": "ask-stall",
+      "from": "hooks",
+      "to": "jev",
+      "y": 550,
+      "label": "stalled?",
+      "variant": "emphasis"
+    },
+    {
+      "id": "stall",
+      "from": "hooks",
+      "to": "loop",
+      "y": 610,
+      "label": "stall warning or pause",
+      "variant": "dashed"
+    },
+    {
+      "id": "claim",
+      "from": "agent",
+      "to": "loop",
+      "y": 690,
+      "label": "LOOP_COMPLETE",
+      "variant": "emphasis"
+    },
+    {
+      "id": "judge",
+      "from": "loop",
+      "to": "judge",
+      "y": 730,
+      "label": "objective + tasks",
+      "variant": "security"
+    },
+    {
+      "id": "verdict",
+      "from": "judge",
+      "to": "loop",
+      "y": 770,
+      "label": "{verdict, reason}",
+      "variant": "return"
+    },
+    {
+      "id": "result",
+      "from": "loop",
+      "to": "you",
+      "y": 820,
+      "label": "complete, or task.resume",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "loop",
+      "from": 175,
+      "to": 825,
+      "type": "backend"
+    },
+    {
+      "participant": "hooks",
+      "from": 215,
+      "to": 345,
+      "type": "security"
+    },
+    {
+      "participant": "hooks",
+      "from": 505,
+      "to": 615,
+      "type": "security"
+    },
+    {
+      "participant": "agent",
+      "from": 405,
+      "to": 695,
+      "type": "external"
+    },
+    {
+      "participant": "judge",
+      "from": 725,
+      "to": 775,
+      "type": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Fresh context",
+      "items": [
+        "State lives on disk and in git, not in the agent",
+        "The full objective is written to .ralph/current-objective.md",
+        "Parallel loops in worktrees read their own objective"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Hooks only warn",
+      "items": [
+        "Triage flags vague goals and low max_iterations",
+        "The stall check flags repeated steps or failures",
+        "When Jev is down the hooks skip with exit 0"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Judge decides",
+      "items": [
+        "The agent can only claim completion",
+        "A fail verdict resumes the loop with the reason",
+        "Limits and max_rejections keep it finite"
+      ]
+    }
+  ]
+}

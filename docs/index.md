@@ -1,143 +1,24 @@
-# Ralph Orchestrator
+# ralph-jev-gauntlet
 
-<div align="center" markdown>
+An autonomous agent loop that only ends when a separate critic agent approves the work in a blind comparison.
 
-**Hat-based orchestration framework that keeps AI agents in a loop until the task is done.**
+ralph-jev-gauntlet runs your coding agent (Claude Code, Codex, Gemini CLI, Kiro and others) in a loop, with a fresh context on every iteration. State lives on disk and in git: events, tasks, memories and the objective. It is inspired by the Ralph loop technique (`while :; do cat PROMPT.md | agent; done`).
 
-[![License](https://img.shields.io/badge/license-MIT-blue)](https://github.com/mikeyobrien/ralph-orchestrator/blob/main/LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.75+-orange)](https://www.rust-lang.org/)
-[![Build](https://img.shields.io/github/actions/workflow/status/mikeyobrien/ralph-orchestrator/ci.yml?branch=main&label=CI)](https://github.com/mikeyobrien/ralph-orchestrator/actions)
+The difference is who decides that the work is finished. The agent can only *claim* completion. A cheap Jev screen and then a separate critic agent, comparing attempts blind, decide whether the claim holds, and the loop keeps going with the reason whenever it doesn't.
 
-> "Me fail English? That's unpossible!" - Ralph Wiggum
+![Architecture](architecture/architecture.png)
 
-</div>
+## Where to go next
 
----
-
-## What is Ralph?
-
-Ralph implements the [Ralph Wiggum technique](https://ghuntley.com/ralph/) — autonomous task completion through continuous iteration. Give Ralph a task, and it will keep working until it's done.
-
-> "The orchestrator is a thin coordination layer, not a platform. Ralph is smart; let Ralph do the work."
-
-### Two Modes of Operation
-
-| Mode | Description | Best For |
-|------|-------------|----------|
-| **Traditional** | Simple loop — Ralph iterates until done | Quick tasks, simple automation |
-| **Hat-Based** | Specialized personas coordinate through events | Complex workflows, multi-step processes |
-
-## Key Features
-
-<div class="grid cards" markdown>
-
--   :material-robot: **Multi-Backend Support**
-
-    Works with Claude Code, Kiro, Gemini CLI, Codex, Forge, Amp, Copilot CLI, and OpenCode
-
--   :material-hat-fedora: **Hat System**
-
-    Specialized Ralph personas with distinct behaviors coordinating through typed events
-
--   :material-shield-check: **Backpressure Enforcement**
-
-    Gates that reject incomplete work — tests, lint, typecheck must pass
-
--   :material-brain: **Memories & Tasks**
-
-    Persistent learning across sessions and runtime work tracking
-
--   :material-monitor: **Interactive TUI**
-
-    Real-time terminal UI for monitoring Ralph's activity
-
--   :material-cog: **31 Presets**
-
-    A small set of supported built-in workflows plus a larger catalog of documented examples
-
-</div>
-
-## Quick Example
-
-```bash
-# Initialize with traditional mode
-ralph init --backend claude
-
-# Create a task
-cat > PROMPT.md << 'EOF'
-Build a REST API with these endpoints:
-- POST /users - Create user
-- GET /users/:id - Get user by ID
-- PUT /users/:id - Update user
-
-Use Express.js with TypeScript.
-EOF
-
-# Run Ralph
-ralph run
-```
-
-Ralph iterates until it outputs `LOOP_COMPLETE` or hits the iteration limit.
-
-## The Ralph Tenets
-
-1. **Fresh Context Is Reliability** — Each iteration clears context. Re-read specs, plan, code every cycle.
-2. **Backpressure Over Prescription** — Don't prescribe how; create gates that reject bad work.
-3. **The Plan Is Disposable** — Regeneration costs one planning loop. Cheap.
-4. **Disk Is State, Git Is Memory** — Files are the handoff mechanism.
-5. **Steer With Signals, Not Scripts** — Add signs, not scripts.
-6. **Let Ralph Ralph** — Sit *on* the loop, not *in* it.
-
-## Getting Started
-
-<div class="grid cards" markdown>
-
--   :material-download: **[Installation](getting-started/installation.md)**
-
-    Install Ralph via npm, the GitHub Releases installer, or Cargo
-
--   :material-rocket-launch: **[Quick Start](getting-started/quick-start.md)**
-
-    Get up and running in 5 minutes
-
--   :material-book-open: **[Concepts](concepts/index.md)**
-
-    Understand hats, events, memories, and backpressure
-
--   :material-cog: **[Configuration](guide/configuration.md)**
-
-    Configure Ralph for your workflow
-
-</div>
-
-## Architecture
-
-Ralph is organized as a Cargo workspace with seven crates:
-
-| Crate | Purpose |
-|-------|---------|
-| `ralph-proto` | Protocol types: Event, Hat, Topic |
-| `ralph-core` | Business logic: EventLoop, Config |
-| `ralph-adapters` | CLI backend integrations |
-| `ralph-tui` | Terminal UI with ratatui |
-| `ralph-cli` | Binary entry point |
-| `ralph-e2e` | End-to-end testing |
-| `ralph-bench` | Benchmarking |
-
-## Community
-
-- [GitHub Issues](https://github.com/mikeyobrien/ralph-orchestrator/issues) — Report bugs and request features
-- [GitHub Discussions](https://github.com/mikeyobrien/ralph-orchestrator/discussions) — Ask questions and share ideas
-- [Contributing Guide](contributing/index.md) — Help improve Ralph
-
-## License
-
-Ralph Orchestrator is open source software licensed under the [MIT License](https://github.com/mikeyobrien/ralph-orchestrator/blob/main/LICENSE).
-
----
-
-<div align="center" markdown>
-
-*"I'm learnding!" - Ralph Wiggum*
-
-</div>
+| Page | What it covers |
+|---|---|
+| [Getting started](getting-started.md) | Install, credentials and a first run |
+| [Loop lifecycle](concepts/loop-lifecycle.md) | What happens from `run` to `LOOP_COMPLETE` |
+| [Gauntlet gate](concepts/gauntlet.md) | How completion is judged |
+| [Judge evidence](concepts/judge-evidence.md) | What the judge looks at and what reaches Jev |
+| [Jev hooks](concepts/jev-hooks.md) | Triage at start and the stall watchdog |
+| [Parallel loops](concepts/parallel-loops.md) | Worktree loops and how each one keeps its own objective |
+| [Configuration](guide/configuration.md) | Config layers, judge settings, hooks and environment |
+| [Troubleshooting](reference/troubleshooting.md) | Common errors and fixes |
+| [Testing](development/testing.md) | How the project is tested |
+| [Architecture diagrams](architecture/index.md) | Interactive Archify diagrams |

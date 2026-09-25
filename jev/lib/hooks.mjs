@@ -25,7 +25,7 @@ export const MODES = {
       },
     },
     state: (payload, ws) => ({
-      objective: loopObjective(ws).slice(0, 4000),
+      objective: loopObjective(ws, payload.loop).slice(0, 4000),
       max_iterations: payload.iteration?.max,
       repository_files: Number(sh(ws, "git", ["ls-files"]).split("\n").filter(Boolean).length),
     }),
@@ -55,7 +55,7 @@ export const MODES = {
       },
     },
     state: (payload, ws) => ({
-      objective: loopObjective(ws).slice(0, 2000),
+      objective: loopObjective(ws, payload.loop).slice(0, 2000),
       iteration: payload.iteration,
       recent_events: recentEvents(ws, 20),
       recent_commits: sh(ws, "git", ["log", "--oneline", "-10"]),

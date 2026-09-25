@@ -72,6 +72,22 @@ Whenever the attempt wins the blind pick, it becomes the new champion (with a co
 
 Both run through `ralph-jev-hook <triage|progress>`. They write their scores to hook metadata, print a warning on stderr, and exit non-zero when their threshold is crossed. If Jev is unavailable or returns an incomplete answer, they skip with exit 0 so an outage never blocks the loop. `on_error` (`warn`, `block` or `suspend`) decides what happens next.
 
+## Documentation
+
+The full documentation is in [`docs/`](docs/index.md) and builds with MkDocs (`mkdocs serve`):
+
+- [Getting started](docs/getting-started.md)
+- [Loop lifecycle](docs/concepts/loop-lifecycle.md)
+- [Gauntlet gate](docs/concepts/gauntlet.md)
+- [Judge evidence](docs/concepts/judge-evidence.md)
+- [Jev hooks](docs/concepts/jev-hooks.md)
+- [Parallel loops](docs/concepts/parallel-loops.md)
+- [Configuration](docs/guide/configuration.md)
+- [Troubleshooting](docs/reference/troubleshooting.md)
+- [Architecture diagrams](docs/architecture/index.md)
+
+![Loop lifecycle](docs/architecture/loop-lifecycle.png)
+
 ## Install
 
 Requirements: Rust (edition 2024), Node.js 18+, git, a builder agent CLI, and a critic CLI (`claude` or `codex`).
@@ -82,7 +98,7 @@ cd ralph-jev-gauntlet
 jev/install.sh
 ```
 
-This links `ralph-jev-gauntlet`, `ralph-gauntlet-judge`, `ralph-jev-judge` and `ralph-jev-hook` into `~/.local/bin`, and adds `jev/ralph.gauntlet.yml` to `~/.ralph/config.yml` when it can do so without conflicts.
+This writes a `ralph-jev-gauntlet` wrapper and links `ralph-gauntlet-judge`, `ralph-jev-judge` and `ralph-jev-hook` into `~/.local/bin`. The wrapper sets `RALPH_USER_CONFIG` to `~/.ralph/gauntlet.yml`, which the installer creates from `jev/ralph.gauntlet.yml`. So the gauntlet has its own user config and can be enabled next to [ralph-jev](https://github.com/flaviomartil/ralph-jev), which keeps using `~/.ralph/config.yml`.
 
 Jev credentials: set `TYPESAFE_API_KEY`, or keep it in `~/.config/jev-browser-use/.env`.
 
@@ -153,6 +169,7 @@ The critic runs non-interactively inside the throwaway copies (`claude -p --perm
 | `jev/ralph-jev-hook.mjs` | Jev triage and progress hooks |
 | `jev/lib/jev.mjs` | Jev client, circuit breaker, evidence collection |
 | `jev/test/` | Node tests, including an end-to-end run with a scripted critic |
+| `docs/` | MkDocs documentation |
 | `docs/architecture/` | Archify specs and renders |
 
 ## Development

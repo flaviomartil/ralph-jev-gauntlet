@@ -19,6 +19,7 @@ fn run_ralph_with_home(
         .current_dir(temp_path)
         .env("HOME", home_path)
         .env("USERPROFILE", home_path)
+        .env_remove("RALPH_USER_CONFIG")
         .output()
         .expect("execute ralph")
 }
