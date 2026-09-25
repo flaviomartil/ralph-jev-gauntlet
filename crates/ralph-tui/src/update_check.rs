@@ -44,19 +44,25 @@ async fn fetch_latest_release_tag() -> Result<Option<String>, reqwest::Error> {
         .timeout(UPDATE_CHECK_TIMEOUT)
         .build()?;
 
-    let release = client
-        .get(url)
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<LatestRelease>()
-        .await?;
-
-    if release.prerelease {
+    let response = client.get(url).send().await?;
+    if release_missing(response.status()) {
         return Ok(None);
     }
 
-    Ok(normalize_version(&release.tag_name))
+    let release = response.error_for_status()?.json::<LatestRelease>().await?;
+
+    Ok(release_tag(&release))
+}
+
+fn release_missing(status: reqwest::StatusCode) -> bool {
+    status == reqwest::StatusCode::NOT_FOUND
+}
+
+fn release_tag(release: &LatestRelease) -> Option<String> {
+    if release.prerelease {
+        return None;
+    }
+    normalize_version(&release.tag_name)
 }
 
 fn latest_release_api_url() -> Option<String> {
@@ -66,7 +72,7 @@ fn latest_release_api_url() -> Option<String> {
         .or_else(|| repository.strip_prefix("http://github.com/"))
         .map(|value| value.trim_end_matches(".git"))
         .filter(|value| !value.is_empty())
-        .unwrap_or("mikeyobrien/ralph-orchestrator");
+        .unwrap_or("flaviomartil/ralph-jev-gauntlet");
 
     Some(format!(
         "https://api.github.com/repos/{repo}/releases/latest"
@@ -128,9 +134,30 @@ mod tests {
         assert_eq!(
             latest_release_api_url(),
             Some(
-                "https://api.github.com/repos/mikeyobrien/ralph-orchestrator/releases/latest"
+                "https://api.github.com/repos/flaviomartil/ralph-jev-gauntlet/releases/latest"
                     .to_string()
             )
         );
+    }
+
+    #[test]
+    fn treats_404_as_no_release() {
+        assert!(release_missing(reqwest::StatusCode::NOT_FOUND));
+        assert!(!release_missing(reqwest::StatusCode::OK));
+    }
+
+    #[test]
+    fn skips_prerelease_tags() {
+        let prerelease = LatestRelease {
+            tag_name: "v9.9.9".to_string(),
+            prerelease: true,
+        };
+        assert_eq!(release_tag(&prerelease), None);
+
+        let stable = LatestRelease {
+            tag_name: "v2.8.0".to_string(),
+            prerelease: false,
+        };
+        assert_eq!(release_tag(&stable), Some("2.8.0".to_string()));
     }
 }

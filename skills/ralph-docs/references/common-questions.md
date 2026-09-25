@@ -2,118 +2,92 @@
 
 Use these patterns when the user's question matches. Each recipe is:
 1. Trigger — what the user said
-2. Fetch — which doc pages to pull
+2. Read — which doc pages to pull (from the local `docs/` or GitHub)
 3. Check — what to grep or grep-equivalent in them
 4. Answer shape — how to frame the reply
 
 ## "Why did my loop terminate?"
 
 1. **Trigger**: User shares a `Loop terminated:` banner or exit code 2.
-2. **Fetch**:
-   - `reference/troubleshooting/index.md`
-   - `concepts/hats-and-events/index.md` (for the completion model)
+2. **Read**:
+   - `docs/reference/troubleshooting.md`
+   - `docs/concepts/loop-lifecycle.md` (for the termination model)
 3. **Check**: look for the specific reason string (`max_iterations`,
-   `max_runtime_seconds`, `completion_promise`, `required_events`, `error`).
-   Each maps to a documented termination path.
+   `max_runtime_seconds`, judge rejection, `error`). Each maps to a
+   documented termination path.
 4. **Answer shape**: name the termination reason, quote the doc on what it
-   means, tell the user the exact config knob (in ralph.yml or preset) that
-   controls it. If it's `max_iterations` with work still pending, suggest
-   raising the cap or checking whether `required_events` was actually emitted.
+   means, tell the user the exact config knob (in ralph.yml, see
+   `docs/guide/configuration.md`) that controls it.
 
-## "Why isn't my hat firing?"
+## "Why did the judge reject the completion claim?"
 
-1. **Trigger**: user-authored hat doesn't activate after the expected event.
-2. **Fetch**:
-   - `concepts/hats-and-events/index.md`
-   - `reference/troubleshooting/index.md` (ambiguous-routing section)
-3. **Check**: confirm the hat's `triggers:` matches the emitted event
-   **exactly** (no wildcards), and that only one hat claims that trigger
-   (ralph rejects ambiguous routing at preflight).
-4. **Answer shape**: run `ralph hats validate` + `ralph hats graph`; show the
-   expected event chain; point at the specific trigger in the preset.
+1. **Trigger**: the agent claimed completion but the loop kept going.
+2. **Read**:
+   - `docs/concepts/gauntlet.md`
+   - `docs/concepts/judge-evidence.md`
+3. **Check**: what evidence the judge saw and what the Jev screen filtered.
+4. **Answer shape**: explain what the judge compared, quote the rejection
+   reason, point at the config knobs in `docs/guide/configuration.md`.
 
-## "Which preset should I use for X?"
+## "How does Ralph decide the work is done?"
 
-1. **Trigger**: "should I use code-assist or feature?"
-2. **Fetch**:
-   - `guide/presets/index.md` (preset decision matrix)
-3. **Check**: pattern column + entry event + completion event.
-4. **Answer shape**: one-line recommendation + why (cite the pattern it
-   matches). Offer `ralph hats list-presets` so the user sees everything
-   discoverable locally, including TOML presets from `~/.config/autoloop/presets/`.
+1. **Read**:
+   - `docs/concepts/gauntlet.md`
+2. **Answer shape**: the agent can only *claim* completion; the Jev screen
+   and the blind critic comparison decide. Cite the doc.
 
-## "How does Ralph decide a backend?"
+## "How do parallel loops work?"
 
-1. **Trigger**: "why did it pick claude?", "how do I force kiro-acp?".
-2. **Fetch**:
-   - `guide/backends/index.md`
-   - `reference/faq/index.md` (auto-detect precedence)
-3. **Check**: resolution order is CLI flag (`-b`) > `cli.backend:` in config >
-   auto-detect walking the default priority list.
-4. **Answer shape**: print the precedence, show the user the exact override
-   for their case (flag or config).
+1. **Read**:
+   - `docs/concepts/parallel-loops.md`
+2. **Answer shape**: worktree isolation, per-loop objective, merge queue.
+   For merge-conflict behavior, cross-check
+   `crates/ralph-core/src/merge_queue.rs`.
 
-## "What is the .ralph/ directory for?"
+## "Which config knob controls X?"
 
-1. **Fetch**:
-   - `advanced/memory-system/index.md`
-   - `advanced/task-system/index.md`
-   - `concepts/memories-and-tasks/index.md`
-2. **Check**: scratchpad, memories.md, tasks.jsonl, loop.lock, loops.json,
-   merge-queue.jsonl purposes.
-3. **Answer shape**: one sentence per file + which ralph command touches it.
-
-## "How do I add a new backend?"
-
-1. **Trigger**: "I want Ralph to support X model CLI".
-2. **Fetch**:
-   - `guide/backends/index.md` (existing patterns)
-   - `api/ralph-adapters/index.md` (the adapter trait / executor types)
-3. **Check**: the backend enum, `CliBackend::<name>()` factory, executor
-   type (PTY/Stdio/Acp), priority-list insertion point.
-4. **Answer shape**: list the crates to edit (`ralph-adapters` for the
-   backend + executor, `ralph-cli/src/doctor.rs` for env-var diagnostics,
-   `guide/backends.md` for docs, tests). Refer the user to
-   `references/contributing.md` for the PR workflow.
+1. **Read**:
+   - `docs/guide/configuration.md`
+2. **Check**: config layers, judge settings, hooks, environment variables.
+3. **Answer shape**: the knob name, the layer it lives in, and the default.
+   If the knob is not documented, grep `crates/ralph-core/src/config.rs`.
 
 ## "Why is Ralph slow / stuck?"
 
-1. **Fetch**:
-   - `reference/troubleshooting/index.md` (idle-timeout section)
-   - `advanced/diagnostics/index.md`
-2. **Check**: `idle_timeout_secs`, backend cold-start cost, TUI subprocess
-   mode, diagnostic log path (`.ralph/diagnostics/logs/`).
+1. **Read**:
+   - `docs/reference/troubleshooting.md`
+   - `docs/concepts/jev-hooks.md` (stall watchdog)
+2. **Check**: stall-watchdog behavior, backend cold-start cost, diagnostic
+   log path (`.ralph/diagnostics/logs/`).
 3. **Answer shape**: direct them to the diagnostic log filename convention;
-   suggest raising `idle_timeout_secs` for slow backends (kiro-acp is ~20s
-   cold start).
-
-## "How do I reset Ralph state between runs?"
-
-1. **Fetch**:
-   - `guide/cli-reference/index.md` (`ralph clean`)
-2. **Answer shape**: `ralph clean` clears `.ralph/agent/`; manual removal of
-   `.ralph/loops.json` for loop registry; `.ralph/merge-queue.jsonl` for
-   merge queue.
+   cite the troubleshooting entry that matches the symptom.
 
 ## "Does Ralph support X feature?"
 
 The generic pattern:
 
-1. `curl` llms.txt.
-2. `grep` for the feature keyword in section titles and link descriptions.
-3. If present → fetch that page, confirm, answer yes with source.
-4. If absent → search `reference/changelog/index.md` for recent additions.
-5. Still absent → search `specs/` in the repo (not on doc site).
-6. Finally → source tree at
-   <https://github.com/mikeyobrien/ralph-orchestrator/tree/main/crates>.
+1. Read `docs/index.md` and scan the "Where to go next" table.
+2. If a page covers it → read that page, confirm, answer yes with source.
+3. If absent → the topic is not documented. Hats, events, presets, and CLI
+   flags have no doc pages; confirm against the source instead:
+   - hats/events → `crates/ralph-core/src/hatless_ralph.rs`,
+     `crates/ralph-core/src/event_loop/`
+   - presets → `presets/`
+   - CLI → `crates/ralph-cli/`, `ralph --help`
+4. Still unsure → say "not documented; here's where to confirm".
 
 Do not assume features exist because "they should" — Ralph is deliberately
-minimal. When unsure, say "not documented; here's where to confirm".
+minimal.
 
-## "What changed in the latest version?"
+## "How do I add a new backend?"
 
-1. **Fetch**:
-   - `reference/changelog/index.md`
-2. **Answer**: summarize the entries newer than the user's local
-   `ralph --version`. Include PR numbers when linked (e.g. #316) for
-   traceability.
+1. **Trigger**: "I want Ralph to support X model CLI".
+2. **Read**: there is no backends doc page; go straight to the source:
+   - `crates/ralph-adapters/src/cli_backend.rs` (backend enum, factories)
+   - `crates/ralph-adapters/src/` executor types (PTY/Stdio/Acp)
+3. **Check**: the backend enum, the `CliBackend` factory, executor type,
+   priority-list insertion point.
+4. **Answer shape**: list the crates to edit (`ralph-adapters` for the
+   backend + executor, `ralph-cli/src/doctor.rs` for env-var diagnostics,
+   tests). Refer the user to `references/contributing.md` for the PR
+   workflow.

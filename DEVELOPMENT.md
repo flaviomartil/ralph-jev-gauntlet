@@ -1,6 +1,6 @@
 # Development Guide
 
-This guide documents the spec-driven development workflow for Ralph Orchestrator. All changes flow through specs—they are the source of truth.
+This guide documents the spec-driven development workflow for ralph-jev-gauntlet. All changes flow through specs—they are the source of truth.
 
 ## Quick Start
 
@@ -16,7 +16,7 @@ This guide documents the spec-driven development workflow for Ralph Orchestrator
 
 ```bash
 # Clone the repo
-cd ralph-orchestrator
+cd ralph-jev-gauntlet
 
 # Allow direnv to activate the dev environment
 direnv allow
@@ -27,7 +27,7 @@ direnv allow
 **Option B: With nix develop**
 
 ```bash
-cd ralph-orchestrator
+cd ralph-jev-gauntlet
 
 # Enter the development shell
 nix develop

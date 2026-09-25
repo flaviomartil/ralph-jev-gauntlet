@@ -683,9 +683,17 @@ pub fn merge_needs_steering(
         .current_dir(workspace)
         .output()?;
 
-    // Check if merge-tree reports conflicts (non-zero exit or conflict markers in output)
-    let has_conflicts =
-        !output.status.success() || String::from_utf8_lossy(&output.stdout).contains("CONFLICT");
+    let has_conflicts = if write_tree_unsupported(
+        output.status.code(),
+        &String::from_utf8_lossy(&output.stderr),
+    ) {
+        legacy_merge_conflicts(workspace, &branch_name)?
+    } else {
+        write_tree_reports_conflict(
+            output.status.success(),
+            &String::from_utf8_lossy(&output.stdout),
+        )
+    };
 
     if has_conflicts {
         // Also get list of conflicting files
@@ -725,6 +733,84 @@ pub fn merge_needs_steering(
             options: vec![],
         })
     }
+}
+
+fn write_tree_unsupported(code: Option<i32>, stderr: &str) -> bool {
+    code == Some(128) && stderr.contains("write-tree")
+}
+
+fn write_tree_reports_conflict(success: bool, stdout: &str) -> bool {
+    !success || stdout.contains("CONFLICT")
+}
+
+fn legacy_merge_conflicts(workspace: &Path, branch_name: &str) -> Result<bool, MergeQueueError> {
+    let worktree_dir = std::env::temp_dir().join(format!(
+        "ralph-merge-check-{}-{}",
+        std::process::id(),
+        Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    ));
+
+    let result = legacy_merge_conflicts_in_worktree(workspace, &worktree_dir, branch_name);
+
+    let _ = Command::new("git")
+        .args(["worktree", "remove", "--force"])
+        .arg(&worktree_dir)
+        .current_dir(workspace)
+        .output();
+    let _ = Command::new("git")
+        .args(["worktree", "prune"])
+        .current_dir(workspace)
+        .output();
+    let _ = fs::remove_dir_all(&worktree_dir);
+
+    result
+}
+
+fn legacy_merge_conflicts_in_worktree(
+    workspace: &Path,
+    worktree_dir: &Path,
+    branch_name: &str,
+) -> Result<bool, MergeQueueError> {
+    let add_output = Command::new("git")
+        .args(["worktree", "add", "--detach"])
+        .arg(worktree_dir)
+        .arg("main")
+        .current_dir(workspace)
+        .output()?;
+
+    if !add_output.status.success() {
+        return Ok(true);
+    }
+
+    let merge_output = Command::new("git")
+        .args([
+            "-c",
+            "user.name=ralph",
+            "-c",
+            "user.email=ralph@localhost",
+            "merge",
+            "--no-commit",
+            "--no-ff",
+            branch_name,
+        ])
+        .current_dir(worktree_dir)
+        .output()?;
+
+    let unmerged = Command::new("git")
+        .args(["ls-files", "-u"])
+        .current_dir(worktree_dir)
+        .output()?;
+
+    let has_conflicts = !merge_output.status.success() || !unmerged.stdout.is_empty();
+
+    if has_conflicts {
+        let _ = Command::new("git")
+            .args(["merge", "--abort"])
+            .current_dir(worktree_dir)
+            .output();
+    }
+
+    Ok(has_conflicts)
 }
 
 /// Generate an execution summary for a completed merge.
@@ -780,6 +866,51 @@ pub fn merge_execution_summary(workspace: &Path, loop_id: &str) -> Result<String
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn init_git_repo(dir: &Path) {
+        git(dir, &["init", "--initial-branch=main"]);
+        git(dir, &["config", "user.email", "test@test.local"]);
+        git(dir, &["config", "user.name", "Test User"]);
+        fs::write(dir.join("README.md"), "# Test").unwrap();
+        git(dir, &["add", "README.md"]);
+        git(dir, &["commit", "-m", "Initial commit"]);
+    }
+
+    fn create_branch(dir: &Path, branch: &str, edit: impl Fn(&Path)) {
+        git(dir, &["checkout", "-b", branch]);
+        edit(dir);
+        git(dir, &["commit", "-m", "Branch changes"]);
+        git(dir, &["checkout", "main"]);
+    }
+
+    fn assert_single_worktree(dir: &Path) {
+        let output = Command::new("git")
+            .args(["worktree", "list", "--porcelain"])
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert_eq!(
+            stdout.matches("worktree ").count(),
+            1,
+            "expected only the main worktree, got: {}",
+            stdout
+        );
+    }
 
     #[test]
     fn test_enqueue() {
@@ -1044,5 +1175,122 @@ mod tests {
 
         assert!(ralph_dir.exists());
         assert!(queue_file.exists());
+    }
+
+    #[test]
+    fn test_write_tree_unsupported_detection() {
+        assert!(write_tree_unsupported(
+            Some(128),
+            "fatal: unknown rev --write-tree"
+        ));
+        assert!(!write_tree_unsupported(Some(1), ""));
+        assert!(!write_tree_unsupported(
+            Some(128),
+            "fatal: ambiguous argument 'main'"
+        ));
+        assert!(!write_tree_unsupported(
+            None,
+            "fatal: unknown rev --write-tree"
+        ));
+    }
+
+    #[test]
+    fn test_write_tree_conflict_parsing() {
+        assert!(!write_tree_reports_conflict(true, "abc123tree\n"));
+        assert!(write_tree_reports_conflict(false, ""));
+        assert!(write_tree_reports_conflict(
+            true,
+            "abc123tree\n\nCONFLICT (content): Merge conflict in src/main.rs"
+        ));
+    }
+
+    #[test]
+    fn test_legacy_merge_conflicts_clean_addition() {
+        let temp_dir = TempDir::new().unwrap();
+        init_git_repo(temp_dir.path());
+        create_branch(temp_dir.path(), "ralph/clean-add", |dir| {
+            fs::write(dir.join("added.txt"), "added on branch\n").unwrap();
+            git(dir, &["add", "added.txt"]);
+        });
+
+        let result = legacy_merge_conflicts(temp_dir.path(), "ralph/clean-add").unwrap();
+
+        assert!(!result);
+        assert_single_worktree(temp_dir.path());
+    }
+
+    #[test]
+    fn test_legacy_merge_conflicts_compatible_text_edits() {
+        let temp_dir = TempDir::new().unwrap();
+        init_git_repo(temp_dir.path());
+        fs::write(
+            temp_dir.path().join("shared.txt"),
+            "line one\nline two\nline three\n",
+        )
+        .unwrap();
+        git(temp_dir.path(), &["add", "shared.txt"]);
+        git(temp_dir.path(), &["commit", "-m", "Add shared file"]);
+        create_branch(temp_dir.path(), "ralph/compat", |dir| {
+            fs::write(
+                dir.join("shared.txt"),
+                "line one\nline two\nline three\nbranch line\n",
+            )
+            .unwrap();
+            git(dir, &["add", "shared.txt"]);
+        });
+        fs::write(
+            temp_dir.path().join("shared.txt"),
+            "main line\nline one\nline two\nline three\n",
+        )
+        .unwrap();
+        git(temp_dir.path(), &["add", "shared.txt"]);
+        git(temp_dir.path(), &["commit", "-m", "Edit on main"]);
+
+        let result = legacy_merge_conflicts(temp_dir.path(), "ralph/compat").unwrap();
+
+        assert!(!result);
+        assert_single_worktree(temp_dir.path());
+    }
+
+    #[test]
+    fn test_legacy_merge_conflicts_same_line_edited() {
+        let temp_dir = TempDir::new().unwrap();
+        init_git_repo(temp_dir.path());
+        fs::write(temp_dir.path().join("shared.txt"), "original\n").unwrap();
+        git(temp_dir.path(), &["add", "shared.txt"]);
+        git(temp_dir.path(), &["commit", "-m", "Add shared file"]);
+        create_branch(temp_dir.path(), "ralph/same-line", |dir| {
+            fs::write(dir.join("shared.txt"), "branch version\n").unwrap();
+            git(dir, &["add", "shared.txt"]);
+        });
+        fs::write(temp_dir.path().join("shared.txt"), "main version\n").unwrap();
+        git(temp_dir.path(), &["add", "shared.txt"]);
+        git(temp_dir.path(), &["commit", "-m", "Edit on main"]);
+
+        let result = legacy_merge_conflicts(temp_dir.path(), "ralph/same-line").unwrap();
+
+        assert!(result);
+        assert_single_worktree(temp_dir.path());
+    }
+
+    #[test]
+    fn test_legacy_merge_conflicts_binary_file() {
+        let temp_dir = TempDir::new().unwrap();
+        init_git_repo(temp_dir.path());
+        fs::write(temp_dir.path().join("blob.bin"), [0u8, 1, 2, 3, 4, 5, 6, 7]).unwrap();
+        git(temp_dir.path(), &["add", "blob.bin"]);
+        git(temp_dir.path(), &["commit", "-m", "Add binary file"]);
+        create_branch(temp_dir.path(), "ralph/binary", |dir| {
+            fs::write(dir.join("blob.bin"), [0u8, 9, 9, 9, 9, 9, 9, 9]).unwrap();
+            git(dir, &["add", "blob.bin"]);
+        });
+        fs::write(temp_dir.path().join("blob.bin"), [0u8, 8, 8, 8, 8, 8, 8, 8]).unwrap();
+        git(temp_dir.path(), &["add", "blob.bin"]);
+        git(temp_dir.path(), &["commit", "-m", "Edit binary on main"]);
+
+        let result = legacy_merge_conflicts(temp_dir.path(), "ralph/binary").unwrap();
+
+        assert!(result);
+        assert_single_worktree(temp_dir.path());
     }
 }

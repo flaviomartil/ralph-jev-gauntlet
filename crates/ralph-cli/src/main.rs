@@ -1,6 +1,6 @@
 //! # ralph-cli
 //!
-//! Binary entry point for the Ralph Orchestrator.
+//! Binary entry point for ralph-jev-gauntlet.
 //!
 //! This crate provides:
 //! - CLI argument parsing using `clap`
@@ -604,7 +604,7 @@ pub(crate) fn load_config_with_overrides(
     Ok(config)
 }
 
-/// Ralph Orchestrator - Multi-agent orchestration framework
+/// ralph-jev-gauntlet - Multi-agent orchestration framework
 #[derive(Parser, Debug)]
 #[command(name = "ralph", version, about)]
 struct Cli {

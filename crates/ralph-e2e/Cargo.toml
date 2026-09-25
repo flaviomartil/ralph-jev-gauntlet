@@ -3,7 +3,7 @@ name = "ralph-e2e"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
-description = "E2E test harness for Ralph Orchestrator - validates real backend behavior"
+description = "E2E test harness for ralph-jev-gauntlet - validates real backend behavior"
 repository.workspace = true
 homepage.workspace = true
 

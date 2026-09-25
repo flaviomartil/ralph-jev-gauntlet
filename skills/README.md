@@ -1,4 +1,4 @@
-# Ralph Orchestrator Agent Skills
+# ralph-jev-gauntlet Agent Skills
 
 This directory is the canonical public skill package for external agent
 harnesses that operate Ralph.
@@ -10,8 +10,8 @@ It ships three skills:
 - `ralph-loop` for running, monitoring, resuming, merging, and debugging Ralph
   loops
 - `ralph-docs` for introspecting and improving Ralph itself via the
-  published `llms.txt` doc map — answering "how does Ralph do X?"
-  questions and scoping code changes to the ralph-orchestrator repo
+  documentation in this repository — answering "how does Ralph do X?"
+  questions and scoping code changes to the ralph-jev-gauntlet repo
 
 These are public agent skills. They are not part of Ralph's internal
 `ralph tools skill` registry.
@@ -21,23 +21,23 @@ These are public agent skills. They are not part of Ralph's internal
 Add this repository as a marketplace source:
 
 ```text
-/plugin marketplace add mikeyobrien/ralph-orchestrator
+/plugin marketplace add flaviomartil/ralph-jev-gauntlet
 ```
 
-Then install the `ralph-orchestrator` plugin from the marketplace browser.
+Then install the `ralph-jev-gauntlet` plugin from the marketplace browser.
 
 ## Install with Vercel `npx skills`
 
 List the skills in this repository:
 
 ```bash
-npx skills add mikeyobrien/ralph-orchestrator --list
+npx skills add flaviomartil/ralph-jev-gauntlet --list
 ```
 
 Install all skills for Claude Code:
 
 ```bash
-npx skills add mikeyobrien/ralph-orchestrator \
+npx skills add flaviomartil/ralph-jev-gauntlet \
   --skill ralph-hats \
   --skill ralph-loop \
   --skill ralph-docs \
@@ -48,7 +48,7 @@ npx skills add mikeyobrien/ralph-orchestrator \
 Install one skill for Codex-style agents:
 
 ```bash
-npx skills add mikeyobrien/ralph-orchestrator \
+npx skills add flaviomartil/ralph-jev-gauntlet \
   --skill ralph-loop \
   -a codex \
   -y

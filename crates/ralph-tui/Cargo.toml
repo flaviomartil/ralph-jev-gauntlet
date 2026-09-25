@@ -3,7 +3,8 @@ name = "ralph-tui"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
-description = "Terminal UI for Ralph Orchestrator using ratatui"
+repository.workspace = true
+description = "Terminal UI for ralph-jev-gauntlet using ratatui"
 
 [lints]
 workspace = true

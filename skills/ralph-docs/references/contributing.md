@@ -1,15 +1,15 @@
 # Proposing a Ralph Code Change
 
 Use this when the user wants to improve or fix something in the
-`ralph-orchestrator` repo itself (not their own hat collection).
+`ralph-jev-gauntlet` repo itself (not their own hat collection).
 
 ## Before Writing Code
 
-1. **Confirm it's not already a feature.** Fetch the relevant doc page from
-   llms.txt. Ralph is deliberately minimal; sometimes the answer is "use the
+1. **Confirm it's not already a feature.** Read the relevant doc page under
+   `docs/`. Ralph is deliberately minimal; sometimes the answer is "use the
    existing knob".
-2. **Confirm it doesn't violate a tenet.** Read
-   `concepts/tenets/index.md`. The six tenets are load-bearing:
+2. **Confirm it doesn't violate a tenet.** Read the six tenets in the repo
+   AGENTS.md. They are load-bearing:
    fresh-context, backpressure, disposable plans, disk-is-state,
    steer-with-signals, let-Ralph-Ralph. Changes that fight these usually
    belong elsewhere.
@@ -64,8 +64,7 @@ cargo test -p ralph-cli --test <integration_file>    # integration tests
 
 If the change is user-visible, also update:
 
-- `docs/guide/<relevant>.md` (user-facing behavior change)
-- `docs/reference/changelog/index.md` (add a line under Unreleased)
+- the relevant page under `docs/` (user-facing behavior change)
 - Any preset YAML/TOML under `presets/` if the change affects them
 
 ## PR Conventions

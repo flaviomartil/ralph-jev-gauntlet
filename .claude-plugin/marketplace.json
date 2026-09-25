@@ -1,7 +1,7 @@
 {
-  "name": "ralph-orchestrator",
+  "name": "ralph-jev-gauntlet",
   "owner": {
-    "name": "mikeyobrien"
+    "name": "flaviomartil"
   },
   "metadata": {
     "description": "Public agent skills for operating and introspecting Ralph",
@@ -9,8 +9,8 @@
   },
   "plugins": [
     {
-      "name": "ralph-orchestrator",
-      "description": "Skills for creating hats, operating loops, and introspecting Ralph via its published llms.txt",
+      "name": "ralph-jev-gauntlet",
+      "description": "Skills for creating hats, operating loops, and introspecting Ralph via the documentation in this repository",
       "source": "./",
       "strict": false,
       "skills": [

@@ -3,7 +3,7 @@ name = "ralph-core"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
-description = "Core orchestration loop, configuration, and state management for Ralph Orchestrator"
+description = "Core orchestration loop, configuration, and state management for ralph-jev-gauntlet"
 
 [features]
 recording = []

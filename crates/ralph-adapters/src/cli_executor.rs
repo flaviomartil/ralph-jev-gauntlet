@@ -53,6 +53,7 @@ pub struct ExecutionResult {
 #[derive(Debug)]
 pub struct CliExecutor {
     backend: CliBackend,
+    workspace_root: Option<std::path::PathBuf>,
 }
 
 enum StreamEvent {
@@ -70,7 +71,15 @@ enum StreamKind {
 impl CliExecutor {
     /// Creates a new executor with the given backend.
     pub fn new(backend: CliBackend) -> Self {
-        Self { backend }
+        Self {
+            backend,
+            workspace_root: None,
+        }
+    }
+
+    pub fn with_workspace_root(mut self, workspace_root: std::path::PathBuf) -> Self {
+        self.workspace_root = Some(workspace_root);
+        self
     }
 
     /// Executes a prompt and streams output to the provided writer.
@@ -102,7 +111,9 @@ impl CliExecutor {
 
         // Set working directory to current directory (mirrors PTY executor behavior)
         // Use fallback to "." if current_dir fails (e.g., E2E test workspaces)
-        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let cwd = self.workspace_root.clone().unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        });
         command.current_dir(&cwd);
         inject_ralph_runtime_env(&mut command, &cwd);
 
@@ -1026,6 +1037,72 @@ mod tests {
         assert!(
             result.protocol_error.is_none(),
             "clean OMP stream must not surface a protocol error"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_workspace_root_uses_it_for_cwd_and_env() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let workspace = temp_dir.path().to_path_buf();
+        std::fs::create_dir_all(workspace.join(".ralph")).unwrap();
+        std::fs::write(
+            workspace.join(".ralph/current-events"),
+            ".ralph/events/test-events.jsonl",
+        )
+        .unwrap();
+
+        let backend = CliBackend {
+            command: "sh".to_string(),
+            args: vec!["-c".to_string()],
+            prompt_mode: PromptMode::Arg,
+            prompt_flag: None,
+            output_format: OutputFormat::Text,
+            env_vars: vec![],
+        };
+
+        let executor = CliExecutor::new(backend).with_workspace_root(workspace.clone());
+        let result = executor
+            .execute_capture(
+                "pwd; echo \"root=$RALPH_WORKSPACE_ROOT\"; echo \"events=$RALPH_EVENTS_FILE\"",
+            )
+            .await
+            .unwrap();
+
+        assert!(result.success);
+        assert!(
+            result
+                .output
+                .contains(&format!("root={}", workspace.to_string_lossy()))
+        );
+        assert!(result.output.contains(&format!(
+            "events={}",
+            workspace.join(".ralph/events/test-events.jsonl").to_string_lossy()
+        )));
+    }
+
+    #[tokio::test]
+    async fn test_execute_without_workspace_root_keeps_current_dir_behavior() {
+        let backend = CliBackend {
+            command: "sh".to_string(),
+            args: vec!["-c".to_string()],
+            prompt_mode: PromptMode::Arg,
+            prompt_flag: None,
+            output_format: OutputFormat::Text,
+            env_vars: vec![],
+        };
+
+        let executor = CliExecutor::new(backend);
+        let result = executor
+            .execute_capture("pwd; echo \"root=$RALPH_WORKSPACE_ROOT\"")
+            .await
+            .unwrap();
+
+        assert!(result.success);
+        let expected = std::env::current_dir().unwrap();
+        assert!(
+            result
+                .output
+                .contains(&format!("root={}", expected.to_string_lossy()))
         );
     }
 

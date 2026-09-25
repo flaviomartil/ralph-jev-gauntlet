@@ -1803,7 +1803,8 @@ pub async fn run_loop_impl(
                 )
                 .await
             } else {
-                let executor = CliExecutor::new(effective_backend.clone());
+                let executor = CliExecutor::new(effective_backend.clone())
+                    .with_workspace_root(config.core.workspace_root.clone());
                 let result = executor
                     .execute(&prompt, stdout(), timeout, verbosity == Verbosity::Verbose)
                     .await?;
@@ -5263,6 +5264,7 @@ async fn handle_wave_events(
         out.use_colors,
         out.rpc_tx.cloned(),
         out.tui.map(Arc::clone),
+        Some(config.core.workspace_root.as_path()),
     )
     .await;
 
@@ -5366,6 +5368,7 @@ async fn execute_wave(
     use_colors: bool,
     rpc_event_tx: Option<tokio::sync::mpsc::Sender<RpcEvent>>,
     tui_state: Option<Arc<std::sync::Mutex<ralph_tui::TuiState>>>,
+    workspace_root: Option<&Path>,
 ) -> Result<ralph_core::CompletedWave> {
     use ralph_core::{WaveTracker, WaveWorkerContext, build_wave_worker_prompt};
 
@@ -5373,6 +5376,10 @@ async fn execute_wave(
     let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency));
 
     let wave_timeout = Duration::from_secs(wave_timeout_secs);
+    let workspace_root = workspace_root.map(Path::to_path_buf);
+    let wave_workspace_root = workspace_root
+        .clone()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     // Register wave in tracker
     let mut tracker = WaveTracker::new();
@@ -5452,6 +5459,10 @@ async fn execute_wave(
                 "RALPH_EVENTS_FILE".into(),
                 worker_events_file.display().to_string(),
             ),
+            (
+                "RALPH_WORKSPACE_ROOT".into(),
+                wave_workspace_root.display().to_string(),
+            ),
         ]);
 
         // Apply hat backend args
@@ -5463,6 +5474,7 @@ async fn execute_wave(
         let tx = progress_tx.clone();
         let worker_rpc_tx = rpc_event_tx.clone();
         let worker_tui_state = tui_state.clone();
+        let worker_workspace_root = workspace_root.clone();
 
         let handle = tokio::spawn(async move {
             let _permit = permit; // Hold permit for concurrency limiting
@@ -5475,6 +5487,7 @@ async fn execute_wave(
                 tx,
                 worker_rpc_tx,
                 worker_tui_state,
+                worker_workspace_root,
             )
             .await
         });
@@ -5705,6 +5718,7 @@ async fn run_wave_worker(
     tx: tokio::sync::mpsc::UnboundedSender<(u32, bool, Duration)>,
     worker_rpc_tx: Option<tokio::sync::mpsc::Sender<RpcEvent>>,
     worker_tui_state: Option<Arc<std::sync::Mutex<ralph_tui::TuiState>>>,
+    workspace_root: Option<PathBuf>,
 ) -> (u32, WaveWorkerOutcome) {
     match wave_worker_execution_mode(worker_backend.output_format) {
         WaveWorkerExecutionMode::Pty => {
@@ -5717,6 +5731,7 @@ async fn run_wave_worker(
                 tx,
                 worker_rpc_tx,
                 worker_tui_state,
+                workspace_root,
             )
             .await
         }
@@ -5730,6 +5745,7 @@ async fn run_wave_worker(
                 tx,
                 worker_rpc_tx,
                 worker_tui_state,
+                workspace_root,
             )
             .await
         }
@@ -5832,6 +5848,7 @@ async fn execute_wave_worker_acp_prompt(
     wave_timeout: Duration,
     worker_rpc_tx: Option<tokio::sync::mpsc::Sender<RpcEvent>>,
     worker_tui_state: Option<Arc<std::sync::Mutex<ralph_tui::TuiState>>>,
+    workspace_root: Option<PathBuf>,
 ) -> AcpWaveExecutionResult {
     #[cfg(test)]
     {
@@ -5853,7 +5870,8 @@ async fn execute_wave_worker_acp_prompt(
         }
     }
 
-    let workspace_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let workspace_root = workspace_root
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let executor = AcpExecutor::new(worker_backend.clone(), workspace_root);
     let mut handler = WaveWorkerStreamHandler::new(index, worker_rpc_tx, worker_tui_state);
 
@@ -5873,6 +5891,7 @@ async fn run_wave_worker_acp(
     tx: tokio::sync::mpsc::UnboundedSender<(u32, bool, Duration)>,
     worker_rpc_tx: Option<tokio::sync::mpsc::Sender<RpcEvent>>,
     worker_tui_state: Option<Arc<std::sync::Mutex<ralph_tui::TuiState>>>,
+    workspace_root: Option<PathBuf>,
 ) -> (u32, WaveWorkerOutcome) {
     let start = std::time::Instant::now();
     let result = execute_wave_worker_acp_prompt(
@@ -5883,6 +5902,7 @@ async fn run_wave_worker_acp(
         wave_timeout,
         worker_rpc_tx,
         worker_tui_state,
+        workspace_root,
     )
     .await;
     let duration = start.elapsed();
@@ -5977,6 +5997,7 @@ async fn run_wave_worker_pty(
     tx: tokio::sync::mpsc::UnboundedSender<(u32, bool, Duration)>,
     worker_rpc_tx: Option<tokio::sync::mpsc::Sender<RpcEvent>>,
     worker_tui_state: Option<Arc<std::sync::Mutex<ralph_tui::TuiState>>>,
+    workspace_root: Option<PathBuf>,
 ) -> (u32, WaveWorkerOutcome) {
     let start = std::time::Instant::now();
 
@@ -5987,7 +6008,8 @@ async fn run_wave_worker_pty(
     let (cmd, args, stdin_input, _temp_file_guard) = worker_backend.build_command(prompt, false);
     let mut stdin_prompt_file = None;
 
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let cwd = workspace_root
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let output_format = worker_backend.output_format;
 
     #[cfg(test)]
@@ -10424,6 +10446,7 @@ hats:
             false,
             None,
             None,
+            Some(temp_dir.path()),
         )
         .await
         .expect("wave execution")
@@ -10463,6 +10486,7 @@ hats:
             false,
             None,
             None,
+            Some(temp_dir.path()),
         )
         .await
         .expect("wave execution")
@@ -10480,7 +10504,11 @@ hats:
     async fn run_wave_for_named_backend_with_capture(
         name: &str,
         payload: &str,
-    ) -> (ralph_core::CompletedWave, CapturedWaveInvocation) {
+    ) -> (
+        ralph_core::CompletedWave,
+        CapturedWaveInvocation,
+        tempfile::TempDir,
+    ) {
         run_wave_for_named_backend_with_capture_and_task_payload(
             name,
             payload,
@@ -10494,7 +10522,11 @@ hats:
         name: &str,
         payload: &str,
         task_payload: &str,
-    ) -> (ralph_core::CompletedWave, CapturedWaveInvocation) {
+    ) -> (
+        ralph_core::CompletedWave,
+        CapturedWaveInvocation,
+        tempfile::TempDir,
+    ) {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let bin_dir = temp_dir.path().join("bin");
         std::fs::create_dir_all(&bin_dir).expect("bin dir");
@@ -10536,6 +10568,7 @@ hats:
             false,
             None,
             None,
+            Some(temp_dir.path()),
         )
         .await
         .expect("wave execution");
@@ -10543,7 +10576,7 @@ hats:
             &std::fs::read_to_string(&worker_capture_path).expect("read captured invocation"),
         )
         .expect("parse captured invocation");
-        (completed, captured)
+        (completed, captured, temp_dir)
     }
 
     #[cfg(unix)]
@@ -10596,6 +10629,7 @@ hats:
             false,
             None,
             None,
+            Some(temp_dir.path()),
         )
         .await
         .expect("wave execution")
@@ -10605,7 +10639,11 @@ hats:
     async fn run_wave_for_hat_backend_with_capture(
         hat_backend: ralph_core::HatBackend,
         backend_args: Option<Vec<String>>,
-    ) -> (ralph_core::CompletedWave, CapturedWaveInvocation) {
+    ) -> (
+        ralph_core::CompletedWave,
+        CapturedWaveInvocation,
+        tempfile::TempDir,
+    ) {
         run_wave_for_hat_backend_with_capture_and_task_payload(
             hat_backend,
             backend_args,
@@ -10619,7 +10657,11 @@ hats:
         hat_backend: ralph_core::HatBackend,
         backend_args: Option<Vec<String>>,
         task_payload: &str,
-    ) -> (ralph_core::CompletedWave, CapturedWaveInvocation) {
+    ) -> (
+        ralph_core::CompletedWave,
+        CapturedWaveInvocation,
+        tempfile::TempDir,
+    ) {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let worker_capture_path = temp_dir.path().join("wave-w-test-0.jsonl.capture");
         let events_file = temp_dir.path().join("events.jsonl");
@@ -10641,6 +10683,7 @@ hats:
             false,
             None,
             None,
+            Some(temp_dir.path()),
         )
         .await
         .expect("wave execution");
@@ -10648,7 +10691,7 @@ hats:
             &std::fs::read_to_string(&worker_capture_path).expect("read captured invocation"),
         )
         .expect("parse captured invocation");
-        (completed, captured)
+        (completed, captured, temp_dir)
     }
 
     #[cfg(unix)]
@@ -10664,7 +10707,11 @@ hats:
     async fn run_wave_for_named_acp_backend_with_capture(
         backend_args: Option<Vec<String>>,
         payload: &str,
-    ) -> (ralph_core::CompletedWave, CapturedAcpWaveInvocation) {
+    ) -> (
+        ralph_core::CompletedWave,
+        CapturedAcpWaveInvocation,
+        tempfile::TempDir,
+    ) {
         let _mock = install_mock_acp_executions(vec![MockAcpExecution::success(
             true,
             vec![make_worker_event("review.done", payload)],
@@ -10686,6 +10733,7 @@ hats:
             false,
             None,
             None,
+            Some(temp_dir.path()),
         )
         .await
         .expect("wave execution");
@@ -10693,7 +10741,7 @@ hats:
             &std::fs::read_to_string(&worker_capture_path).expect("read captured ACP invocation"),
         )
         .expect("parse captured ACP invocation");
-        (completed, captured)
+        (completed, captured, temp_dir)
     }
 
     #[cfg(unix)]
@@ -10701,7 +10749,11 @@ hats:
         hat_backend: ralph_core::HatBackend,
         backend_args: Option<Vec<String>>,
         payload: &str,
-    ) -> (ralph_core::CompletedWave, CapturedAcpWaveInvocation) {
+    ) -> (
+        ralph_core::CompletedWave,
+        CapturedAcpWaveInvocation,
+        tempfile::TempDir,
+    ) {
         run_wave_for_hat_backend_with_acp_capture_and_task_payload(
             hat_backend,
             backend_args,
@@ -10717,7 +10769,11 @@ hats:
         backend_args: Option<Vec<String>>,
         payload: &str,
         task_payload: &str,
-    ) -> (ralph_core::CompletedWave, CapturedAcpWaveInvocation) {
+    ) -> (
+        ralph_core::CompletedWave,
+        CapturedAcpWaveInvocation,
+        tempfile::TempDir,
+    ) {
         let _mock = install_mock_acp_executions(vec![MockAcpExecution::success(
             true,
             vec![make_worker_event("review.done", payload)],
@@ -10743,6 +10799,7 @@ hats:
             false,
             None,
             None,
+            Some(temp_dir.path()),
         )
         .await
         .expect("wave execution");
@@ -10750,7 +10807,7 @@ hats:
             &std::fs::read_to_string(&worker_capture_path).expect("read captured ACP invocation"),
         )
         .expect("parse captured ACP invocation");
-        (completed, captured)
+        (completed, captured, temp_dir)
     }
 
     #[cfg(unix)]
@@ -10858,6 +10915,8 @@ pathlib.Path(os.environ["RALPH_EVENTS_FILE"] + ".capture").write_text(json.dumps
         "RALPH_WAVE_ID": os.environ.get("RALPH_WAVE_ID", ""),
         "RALPH_WAVE_INDEX": os.environ.get("RALPH_WAVE_INDEX", ""),
         "RALPH_EVENTS_FILE": os.environ.get("RALPH_EVENTS_FILE", ""),
+        "RALPH_WORKSPACE_ROOT": os.environ.get("RALPH_WORKSPACE_ROOT", ""),
+        "WORKER_CWD": os.getcwd(),
         "TERM": os.environ.get("TERM", ""),
         "NO_COLOR": os.environ.get("NO_COLOR", ""),
     }},
@@ -10918,6 +10977,7 @@ EOF"#,
     fn assert_captured_wave_env(
         env: &std::collections::BTreeMap<String, String>,
         expect_terminal_env: bool,
+        expected_root: &Path,
     ) {
         assert_eq!(env.get("RALPH_WAVE_WORKER").map(String::as_str), Some("1"));
         assert_eq!(env.get("RALPH_WAVE_ID").map(String::as_str), Some("w-test"));
@@ -10932,6 +10992,37 @@ EOF"#,
             "missing wave events file env: {:?}",
             env
         );
+        let expected_root = expected_root
+            .canonicalize()
+            .unwrap_or_else(|_| expected_root.to_path_buf());
+        let workspace_root = env
+            .get("RALPH_WORKSPACE_ROOT")
+            .filter(|root| !root.is_empty())
+            .map(PathBuf::from);
+        assert!(
+            workspace_root.is_some(),
+            "missing wave workspace root env: {:?}",
+            env
+        );
+        let workspace_root = workspace_root
+            .expect("workspace root")
+            .canonicalize()
+            .unwrap_or_else(|_| PathBuf::from(env["RALPH_WORKSPACE_ROOT"].as_str()));
+        assert_eq!(
+            workspace_root, expected_root,
+            "wave workspace root differs from expected root: {:?}",
+            env
+        );
+        if let Some(worker_cwd) = env.get("WORKER_CWD") {
+            let worker_cwd = PathBuf::from(worker_cwd)
+                .canonicalize()
+                .unwrap_or_else(|_| PathBuf::from(worker_cwd));
+            assert_eq!(
+                worker_cwd, expected_root,
+                "wave worker cwd differs from expected root: {:?}",
+                env
+            );
+        }
     }
 
     #[cfg(unix)]
@@ -10961,6 +11052,7 @@ EOF"#,
         captured: &CapturedWaveInvocation,
         expected_prefix: &[&str],
         prompt_delivery: PromptDeliveryExpectation,
+        expected_root: &Path,
     ) {
         let args = captured.args.iter().map(String::as_str).collect::<Vec<_>>();
 
@@ -11059,13 +11151,14 @@ EOF"#,
         }
 
         assert_captured_wave_prompt(&captured.prompt);
-        assert_captured_wave_env(&captured.env, true);
+        assert_captured_wave_env(&captured.env, true, expected_root);
     }
 
     #[cfg(unix)]
     fn assert_acp_invocation_contract(
         captured: &CapturedAcpWaveInvocation,
         expected_args: &[&str],
+        expected_root: &Path,
     ) {
         assert_eq!(captured.command, "kiro-cli");
         assert_eq!(
@@ -11075,7 +11168,7 @@ EOF"#,
             captured.args
         );
         assert_captured_wave_prompt(&captured.prompt);
-        assert_captured_wave_env(&captured.env, false);
+        assert_captured_wave_env(&captured.env, false, expected_root);
     }
 
     #[cfg(unix)]
@@ -11458,6 +11551,7 @@ EOF"#,
             false,
             None,
             None,
+            Some(temp_dir.path()),
         )
         .await
         .expect("wave execution")
@@ -11472,7 +11566,7 @@ EOF"#,
     async fn test_omp_hat_named_backend_appends_runtime_args_once() {
         let body = invocation_capture_backend_body("omp hat named args once ok");
         let _fake = install_fake_path_backends(&[("omp", body.as_str())]);
-        let (completed, captured) = run_wave_for_hat_backend_with_capture(
+        let (completed, captured, workspace_root) = run_wave_for_hat_backend_with_capture(
             ralph_core::HatBackend::Named("omp".to_string()),
             Some(vec!["--hat-runtime-arg".to_string()]),
         )
@@ -11490,6 +11584,7 @@ EOF"#,
                 "--hat-runtime-arg",
             ],
             PromptDeliveryExpectation::Positional,
+            workspace_root.path(),
         );
         // Args-once guard: the runtime arg and each autonomous-prefix flag appear
         // exactly once in the captured argv (no per-hat duplication).
@@ -11524,7 +11619,7 @@ EOF"#,
     async fn test_omp_hat_named_with_args_preserves_backend_args_once() {
         let body = invocation_capture_backend_body("omp hat named-with-args ok");
         let _fake = install_fake_path_backends(&[("omp", body.as_str())]);
-        let (completed, captured) = run_wave_for_hat_backend_with_capture(
+        let (completed, captured, workspace_root) = run_wave_for_hat_backend_with_capture(
             ralph_core::HatBackend::NamedWithArgs {
                 backend_type: "omp".to_string(),
                 args: vec!["--model".to_string(), "claude-sonnet-5".to_string()],
@@ -11547,6 +11642,7 @@ EOF"#,
                 "--hat-runtime-arg",
             ],
             PromptDeliveryExpectation::Positional,
+            workspace_root.path(),
         );
         // Backend arg and runtime arg each appear exactly once (no cross-dup).
         assert_eq!(
@@ -11579,7 +11675,7 @@ EOF"#,
         let _fake = install_fake_path_backends(&[("omp", body.as_str())]);
         // Global backend is an intentionally missing executable; the worker only
         // succeeds because the per-hat OMP backend resolves and runs the fake.
-        let (completed, captured) = run_wave_for_hat_backend_with_capture(
+        let (completed, captured, _workspace_root) = run_wave_for_hat_backend_with_capture(
             ralph_core::HatBackend::Named("omp".to_string()),
             None,
         )
@@ -11808,13 +11904,14 @@ EOF"#,
                 marker_id: "invocation-contract:named:omp",
             },
         ] {
-            let (completed, captured) =
+            let (completed, captured, workspace_root) =
                 run_wave_for_named_backend_with_capture(case.name, case.success_payload).await;
             assert_single_success(&completed, case.success_payload);
             assert_named_backend_invocation_contract(
                 &captured,
                 case.expected_prefix,
                 case.prompt_delivery,
+                workspace_root.path(),
             );
             emit_wave_validation_marker(case.marker_id, &["backend"]);
         }
@@ -11908,17 +12005,19 @@ EOF"#,
                 marker_id: "large-prompt-contract:named:omp",
             },
         ] {
-            let (completed, captured) = run_wave_for_named_backend_with_capture_and_task_payload(
-                case.name,
-                case.success_payload,
-                &task_payload,
-            )
-            .await;
+            let (completed, captured, workspace_root) =
+                run_wave_for_named_backend_with_capture_and_task_payload(
+                    case.name,
+                    case.success_payload,
+                    &task_payload,
+                )
+                .await;
             assert_single_success(&completed, case.success_payload);
             assert_named_backend_invocation_contract(
                 &captured,
                 case.expected_prefix,
                 case.prompt_delivery,
+                workspace_root.path(),
             );
             assert!(
                 captured.prompt.contains(&task_payload),
@@ -11935,7 +12034,7 @@ EOF"#,
         {
             let body = invocation_capture_backend_body("hat named invocation contract ok");
             let _fake = install_fake_path_backends(&[("gemini", body.as_str())]);
-            let (completed, captured) = run_wave_for_hat_backend_with_capture(
+            let (completed, captured, workspace_root) = run_wave_for_hat_backend_with_capture(
                 ralph_core::HatBackend::Named("gemini".to_string()),
                 Some(vec!["--hat-runtime-arg".to_string()]),
             )
@@ -11946,6 +12045,7 @@ EOF"#,
                 &captured,
                 &["--yolo", "--hat-runtime-arg"],
                 PromptDeliveryExpectation::Flag("-p"),
+                workspace_root.path(),
             );
             emit_wave_validation_marker("invocation-contract:hat:named", &["backend"]);
         }
@@ -11954,7 +12054,7 @@ EOF"#,
             let body =
                 invocation_capture_backend_body("hat named-with-args invocation contract ok");
             let _fake = install_fake_path_backends(&[("opencode", body.as_str())]);
-            let (completed, captured) = run_wave_for_hat_backend_with_capture(
+            let (completed, captured, workspace_root) = run_wave_for_hat_backend_with_capture(
                 ralph_core::HatBackend::NamedWithArgs {
                     backend_type: "opencode".to_string(),
                     args: vec!["--from-hat-backend".to_string()],
@@ -11968,6 +12068,7 @@ EOF"#,
                 &captured,
                 &["run", "--from-hat-backend", "--hat-runtime-arg"],
                 PromptDeliveryExpectation::Positional,
+                workspace_root.path(),
             );
             emit_wave_validation_marker("invocation-contract:hat:named-with-args", &["backend"]);
         }
@@ -12106,7 +12207,7 @@ EOF"#,
             ] {
                 let body = invocation_capture_backend_body(case.success_payload);
                 let _fake = install_fake_path_backends(&[(case.executable_name, body.as_str())]);
-                let (completed, captured) = run_wave_for_hat_backend_with_capture(
+                let (completed, captured, workspace_root) = run_wave_for_hat_backend_with_capture(
                     ralph_core::HatBackend::NamedWithArgs {
                         backend_type: case.backend_type.to_string(),
                         args: case
@@ -12124,6 +12225,7 @@ EOF"#,
                     &captured,
                     case.expected_prefix,
                     case.prompt_delivery,
+                    workspace_root.path(),
                 );
                 emit_wave_validation_marker(case.marker_id, &["backend"]);
             }
@@ -12132,7 +12234,7 @@ EOF"#,
         {
             let body = invocation_capture_backend_body("hat kiro agent invocation contract ok");
             let _fake = install_fake_path_backends(&[("kiro-cli", body.as_str())]);
-            let (completed, captured) = run_wave_for_hat_backend_with_capture(
+            let (completed, captured, workspace_root) = run_wave_for_hat_backend_with_capture(
                 ralph_core::HatBackend::KiroAgent {
                     backend_type: "kiro".to_string(),
                     agent: "reviewer-agent".to_string(),
@@ -12155,6 +12257,7 @@ EOF"#,
                     "--hat-runtime-arg",
                 ],
                 PromptDeliveryExpectation::Positional,
+                workspace_root.path(),
             );
             emit_wave_validation_marker("invocation-contract:hat:kiro-agent", &["backend"]);
         }
@@ -12163,7 +12266,7 @@ EOF"#,
             let temp_dir = tempfile::tempdir().expect("temp dir");
             let body = invocation_capture_backend_body("hat custom invocation contract ok");
             let worker_path = write_fake_executable(temp_dir.path(), "custom-wave-worker", &body);
-            let (completed, captured) = run_wave_for_hat_backend_with_capture(
+            let (completed, captured, workspace_root) = run_wave_for_hat_backend_with_capture(
                 ralph_core::HatBackend::Custom {
                     command: worker_path.display().to_string(),
                     args: vec!["--from-custom-backend".to_string()],
@@ -12177,6 +12280,7 @@ EOF"#,
                 &captured,
                 &["--from-custom-backend", "--hat-runtime-arg"],
                 PromptDeliveryExpectation::Positional,
+                workspace_root.path(),
             );
             emit_wave_validation_marker("invocation-contract:hat:custom", &["backend"]);
         }
@@ -12303,18 +12407,20 @@ EOF"#,
         ] {
             let body = invocation_capture_backend_body(case.success_payload);
             let _fake = install_fake_path_backends(&[(case.executable_name, body.as_str())]);
-            let (completed, captured) = run_wave_for_hat_backend_with_capture_and_task_payload(
-                ralph_core::HatBackend::Named(case.backend_type.to_string()),
-                Some(vec!["--hat-runtime-arg".to_string()]),
-                &task_payload,
-            )
-            .await;
+            let (completed, captured, workspace_root) =
+                run_wave_for_hat_backend_with_capture_and_task_payload(
+                    ralph_core::HatBackend::Named(case.backend_type.to_string()),
+                    Some(vec!["--hat-runtime-arg".to_string()]),
+                    &task_payload,
+                )
+                .await;
 
             assert_single_success(&completed, case.success_payload);
             assert_named_backend_invocation_contract(
                 &captured,
                 case.expected_prefix,
                 case.prompt_delivery,
+                workspace_root.path(),
             );
             assert!(
                 captured.prompt.contains(&task_payload),
@@ -12325,16 +12431,21 @@ EOF"#,
         }
 
         {
-            let (completed, captured) = run_wave_for_hat_backend_with_acp_capture_and_task_payload(
-                ralph_core::HatBackend::Named("kiro-acp".to_string()),
-                Some(vec!["--hat-runtime-arg".to_string()]),
-                "hat kiro-acp named large prompt contract ok",
-                &task_payload,
-            )
-            .await;
+            let (completed, captured, workspace_root) =
+                run_wave_for_hat_backend_with_acp_capture_and_task_payload(
+                    ralph_core::HatBackend::Named("kiro-acp".to_string()),
+                    Some(vec!["--hat-runtime-arg".to_string()]),
+                    "hat kiro-acp named large prompt contract ok",
+                    &task_payload,
+                )
+                .await;
 
             assert_single_success(&completed, "hat kiro-acp named large prompt contract ok");
-            assert_acp_invocation_contract(&captured, &["acp", "--hat-runtime-arg"]);
+            assert_acp_invocation_contract(
+                &captured,
+                &["acp", "--hat-runtime-arg"],
+                workspace_root.path(),
+            );
             assert!(
                 captured.prompt.contains(&task_payload),
                 "captured prompt should include full large task payload for kiro-acp named hat"
@@ -12465,25 +12576,27 @@ EOF"#,
         ] {
             let body = invocation_capture_backend_body(case.success_payload);
             let _fake = install_fake_path_backends(&[(case.executable_name, body.as_str())]);
-            let (completed, captured) = run_wave_for_hat_backend_with_capture_and_task_payload(
-                ralph_core::HatBackend::NamedWithArgs {
-                    backend_type: case.backend_type.to_string(),
-                    args: case
-                        .extra_args
-                        .iter()
-                        .map(|arg| (*arg).to_string())
-                        .collect(),
-                },
-                Some(vec!["--hat-runtime-arg".to_string()]),
-                &task_payload,
-            )
-            .await;
+            let (completed, captured, workspace_root) =
+                run_wave_for_hat_backend_with_capture_and_task_payload(
+                    ralph_core::HatBackend::NamedWithArgs {
+                        backend_type: case.backend_type.to_string(),
+                        args: case
+                            .extra_args
+                            .iter()
+                            .map(|arg| (*arg).to_string())
+                            .collect(),
+                    },
+                    Some(vec!["--hat-runtime-arg".to_string()]),
+                    &task_payload,
+                )
+                .await;
 
             assert_single_success(&completed, case.success_payload);
             assert_named_backend_invocation_contract(
                 &captured,
                 case.expected_prefix,
                 case.prompt_delivery,
+                workspace_root.path(),
             );
             assert!(
                 captured.prompt.contains(&task_payload),
@@ -12496,16 +12609,17 @@ EOF"#,
         {
             let body = invocation_capture_backend_body("hat kiro agent large prompt contract ok");
             let _fake = install_fake_path_backends(&[("kiro-cli", body.as_str())]);
-            let (completed, captured) = run_wave_for_hat_backend_with_capture_and_task_payload(
-                ralph_core::HatBackend::KiroAgent {
-                    backend_type: "kiro".to_string(),
-                    agent: "reviewer-agent".to_string(),
-                    args: vec!["--kiro-extra".to_string()],
-                },
-                Some(vec!["--hat-runtime-arg".to_string()]),
-                &task_payload,
-            )
-            .await;
+            let (completed, captured, workspace_root) =
+                run_wave_for_hat_backend_with_capture_and_task_payload(
+                    ralph_core::HatBackend::KiroAgent {
+                        backend_type: "kiro".to_string(),
+                        agent: "reviewer-agent".to_string(),
+                        args: vec!["--kiro-extra".to_string()],
+                    },
+                    Some(vec!["--hat-runtime-arg".to_string()]),
+                    &task_payload,
+                )
+                .await;
 
             assert_single_success(&completed, "hat kiro agent large prompt contract ok");
             assert_named_backend_invocation_contract(
@@ -12520,6 +12634,7 @@ EOF"#,
                     "--hat-runtime-arg",
                 ],
                 PromptDeliveryExpectation::TempFilePositional,
+                workspace_root.path(),
             );
             assert!(
                 captured.prompt.contains(&task_payload),
@@ -12529,22 +12644,24 @@ EOF"#,
         }
 
         {
-            let (completed, captured) = run_wave_for_hat_backend_with_acp_capture_and_task_payload(
-                ralph_core::HatBackend::KiroAgent {
-                    backend_type: "kiro-acp".to_string(),
-                    agent: "reviewer-agent".to_string(),
-                    args: vec!["--ignored-extra".to_string()],
-                },
-                Some(vec!["--hat-runtime-arg".to_string()]),
-                "hat kiro-acp agent large prompt contract ok",
-                &task_payload,
-            )
-            .await;
+            let (completed, captured, workspace_root) =
+                run_wave_for_hat_backend_with_acp_capture_and_task_payload(
+                    ralph_core::HatBackend::KiroAgent {
+                        backend_type: "kiro-acp".to_string(),
+                        agent: "reviewer-agent".to_string(),
+                        args: vec!["--ignored-extra".to_string()],
+                    },
+                    Some(vec!["--hat-runtime-arg".to_string()]),
+                    "hat kiro-acp agent large prompt contract ok",
+                    &task_payload,
+                )
+                .await;
 
             assert_single_success(&completed, "hat kiro-acp agent large prompt contract ok");
             assert_acp_invocation_contract(
                 &captured,
                 &["acp", "--agent", "reviewer-agent", "--hat-runtime-arg"],
+                workspace_root.path(),
             );
             assert!(
                 captured.prompt.contains(&task_payload),
@@ -12560,21 +12677,23 @@ EOF"#,
             let temp_dir = tempfile::tempdir().expect("temp dir");
             let body = invocation_capture_backend_body("hat custom large prompt contract ok");
             let worker_path = write_fake_executable(temp_dir.path(), "custom-wave-worker", &body);
-            let (completed, captured) = run_wave_for_hat_backend_with_capture_and_task_payload(
-                ralph_core::HatBackend::Custom {
-                    command: worker_path.display().to_string(),
-                    args: vec!["--from-custom-backend".to_string()],
-                },
-                Some(vec!["--hat-runtime-arg".to_string()]),
-                &task_payload,
-            )
-            .await;
+            let (completed, captured, workspace_root) =
+                run_wave_for_hat_backend_with_capture_and_task_payload(
+                    ralph_core::HatBackend::Custom {
+                        command: worker_path.display().to_string(),
+                        args: vec!["--from-custom-backend".to_string()],
+                    },
+                    Some(vec!["--hat-runtime-arg".to_string()]),
+                    &task_payload,
+                )
+                .await;
 
             assert_single_success(&completed, "hat custom large prompt contract ok");
             assert_named_backend_invocation_contract(
                 &captured,
                 &["--from-custom-backend", "--hat-runtime-arg"],
                 PromptDeliveryExpectation::TempFilePositional,
+                workspace_root.path(),
             );
             assert!(
                 captured.prompt.contains(&task_payload),
@@ -12588,19 +12707,24 @@ EOF"#,
     #[tokio::test]
     async fn test_execute_wave_acp_backend_invocation_contracts() {
         {
-            let (completed, captured) = run_wave_for_named_acp_backend_with_capture(
-                Some(vec!["--hat-runtime-arg".to_string()]),
-                "named ACP invocation contract ok",
-            )
-            .await;
+            let (completed, captured, workspace_root) =
+                run_wave_for_named_acp_backend_with_capture(
+                    Some(vec!["--hat-runtime-arg".to_string()]),
+                    "named ACP invocation contract ok",
+                )
+                .await;
 
             assert_single_success(&completed, "named ACP invocation contract ok");
-            assert_acp_invocation_contract(&captured, &["acp", "--hat-runtime-arg"]);
+            assert_acp_invocation_contract(
+                &captured,
+                &["acp", "--hat-runtime-arg"],
+                workspace_root.path(),
+            );
             emit_wave_validation_marker("invocation-contract:acp:named:kiro-acp", &["backend"]);
         }
 
         {
-            let (completed, captured) = run_wave_for_hat_backend_with_acp_capture(
+            let (completed, captured, workspace_root) = run_wave_for_hat_backend_with_acp_capture(
                 ralph_core::HatBackend::KiroAgent {
                     backend_type: "kiro-acp".to_string(),
                     agent: "reviewer-agent".to_string(),
@@ -12615,12 +12739,13 @@ EOF"#,
             assert_acp_invocation_contract(
                 &captured,
                 &["acp", "--agent", "reviewer-agent", "--hat-runtime-arg"],
+                workspace_root.path(),
             );
             emit_wave_validation_marker("invocation-contract:acp:hat:kiro-agent", &["backend"]);
         }
 
         {
-            let (completed, captured) = run_wave_for_hat_backend_with_acp_capture(
+            let (completed, captured, workspace_root) = run_wave_for_hat_backend_with_acp_capture(
                 ralph_core::HatBackend::NamedWithArgs {
                     backend_type: "kiro-acp".to_string(),
                     args: vec!["--model".to_string(), "claude-sonnet-4".to_string()],
@@ -12634,6 +12759,7 @@ EOF"#,
             assert_acp_invocation_contract(
                 &captured,
                 &["acp", "--model", "claude-sonnet-4", "--hat-runtime-arg"],
+                workspace_root.path(),
             );
             emit_wave_validation_marker(
                 "invocation-contract:acp:hat:named-with-args",
@@ -12907,6 +13033,7 @@ EOF"#,
             false,
             None,
             None,
+            Some(temp_dir.path()),
         )
         .await
         .expect("wave execution");
@@ -12986,6 +13113,7 @@ EOF"#,
             false,
             None,
             None,
+            Some(temp_dir.path()),
         )
         .await;
 
@@ -13026,6 +13154,7 @@ EOF"#,
             &worker_events_path,
             Duration::from_millis(1),
             tx,
+            None,
             None,
             None,
         )
@@ -13176,6 +13305,7 @@ EOF"#,
             tx,
             None,
             None,
+            None,
         )
         .await;
 
@@ -13298,6 +13428,7 @@ sleep 300
             &worker_events_path,
             Duration::from_secs(1),
             tx,
+            None,
             None,
             None,
         )

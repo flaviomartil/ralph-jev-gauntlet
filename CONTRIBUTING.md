@@ -1,6 +1,6 @@
-# Contributing to Ralph Orchestrator
+# Contributing to ralph-jev-gauntlet
 
-Thank you for considering contributing to Ralph Orchestrator! This document provides guidelines and information to help you contribute effectively.
+Thank you for considering contributing to ralph-jev-gauntlet! This document provides guidelines and information to help you contribute effectively.
 
 ## Code of Conduct
 
@@ -17,8 +17,8 @@ This project and everyone participating in it is governed by the [Code of Conduc
 
 ```bash
 # Clone the repository
-git clone https://github.com/mikeyobrien/ralph-orchestrator.git
-cd ralph-orchestrator
+git clone https://github.com/flaviomartil/ralph-jev-gauntlet.git
+cd ralph-jev-gauntlet
 
 # Install git hooks for pre-commit and pre-push checks
 ./scripts/setup-hooks.sh
@@ -133,7 +133,7 @@ just coverage-badge-json
 ### Project Structure
 
 ```
-ralph-orchestrator/
+ralph-jev-gauntlet/
 ├── crates/
 │   ├── ralph-cli/      # CLI application
 │   ├── ralph-core/     # Core library
@@ -178,7 +178,7 @@ See `crates/ralph-core/tests/fixtures/` for fixture format details.
 
 - **Issues**: Open an issue for bugs or feature requests
 - **Discussions**: Use GitHub Discussions for questions
-- **Documentation**: Check the [docs](https://mikeyobrien.github.io/ralph-orchestrator/)
+- **Documentation**: Check the [docs](https://github.com/flaviomartil/ralph-jev-gauntlet/tree/main/docs)
 
 ## License
 
