@@ -1,4 +1,4 @@
-import { envNumber, noul, recentEvents, sh, tail } from "./jev.mjs";
+import { envNumber, noul, recentEvents, runVerify, sh, tail, verifyFailure } from "./jev.mjs";
 
 export const GAPS = {
   implementation_missing: "Part of the requested behavior has not been implemented yet or exists only as a plan or description.",
@@ -24,7 +24,7 @@ export const QUESTIONS = {
   verified: {
     type: "noul",
     instructions:
-      "Do `recent_events`, `closed_tasks` or `recent_commits` show that the work was checked by running tests, a build, a typecheck or another concrete verification that passed, rather than only being claimed as done?",
+      "Do `verification_run`, `recent_events`, `closed_tasks` or `recent_commits` show that the work was checked by running tests, a build, a typecheck or another concrete verification that passed, rather than only being claimed as done? A `verification_run` with `passed` true is direct evidence.",
   },
   gap: {
     type: "choice",
@@ -33,7 +33,7 @@ export const QUESTIONS = {
   },
 };
 
-export function gatherEvidence(req) {
+export async function gatherEvidence(req, env = process.env) {
   const ws = req.workspace || process.cwd();
   return {
     objective: String(req.objective || "").slice(0, 4000),
@@ -44,7 +44,13 @@ export function gatherEvidence(req) {
     uncommitted_changes: sh(ws, "git", ["status", "--short"]).slice(0, 2000),
     diff_stat: tail(sh(ws, "git", ["diff", "--stat", "HEAD~5"]), 2000),
     recent_events: recentEvents(ws),
+    verification_run: await runVerify(ws, env),
   };
+}
+
+export function preVerdict(evidence) {
+  const failure = verifyFailure(evidence.verification_run);
+  return failure ? { verdict: "fail", reason: failure } : null;
 }
 
 export function judgeThresholds() {

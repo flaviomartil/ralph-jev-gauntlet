@@ -84,7 +84,7 @@ for (let i = 0; i < 150; i++) {
       const out = parseCriticOutput(text);
       assert.ok(out && typeof out === "object" && Array.isArray(out.criteria));
     } catch (e) {
-      assert.match(e.message, /no verdict JSON/);
+      assert.match(e.message, /no verdict JSON|must end with its verdict/);
     }
   });
 }
@@ -113,7 +113,7 @@ for (let i = 0; i < 150; i++) {
       assert.ok(Array.isArray(out.criteria));
       assert.doesNotThrow(() => JSON.stringify(out));
     } catch (e) {
-      assert.match(e.message, /no verdict JSON/);
+      assert.match(e.message, /no verdict JSON|must end with its verdict/);
     }
   });
 }

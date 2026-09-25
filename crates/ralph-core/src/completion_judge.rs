@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Serialize)]
@@ -45,35 +46,37 @@ pub fn run_judge(
     if !workspace.as_os_str().is_empty() {
         command.current_dir(workspace);
     }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
     let mut child = command
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("failed to spawn judge '{program}': {e}"))?;
 
-    if let Some(mut stdin) = child.stdin.take()
-        && let Err(e) = stdin.write_all(&payload)
-        && e.kind() != std::io::ErrorKind::BrokenPipe
-    {
-        return Err(format!("failed to write judge stdin: {e}"));
-    }
-
-    let mut stdout = child.stdout.take().ok_or("judge stdout unavailable")?;
-    let reader = std::thread::spawn(move || {
-        let mut buf = String::new();
-        let _ = stdout.read_to_string(&mut buf);
-        buf
+    let mut stdin = child.stdin.take().ok_or("judge stdin unavailable")?;
+    let (writer_tx, writer_rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let error = match stdin.write_all(&payload) {
+            Err(e) if e.kind() != std::io::ErrorKind::BrokenPipe => Some(e.to_string()),
+            _ => None,
+        };
+        let _ = writer_tx.send(error);
     });
+    let stdout = Captured::start(child.stdout.take(), MAX_STDOUT_BYTES);
+    let stderr = Captured::start(child.stderr.take(), MAX_STDERR_BYTES);
 
     let deadline = Instant::now() + Duration::from_secs(config.timeout_seconds.max(1));
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if Instant::now() >= deadline => {
-                let _ = child.kill();
-                let _ = child.wait();
+                terminate_process_group(&mut child);
                 return Err(format!("judge timed out after {}s", config.timeout_seconds));
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(50)),
@@ -81,11 +84,115 @@ pub fn run_judge(
         }
     };
 
-    let output = reader.join().unwrap_or_default();
+    kill_process_group(child.id());
+    let grace = deadline
+        .saturating_duration_since(Instant::now())
+        .clamp(Duration::from_millis(100), JUDGE_EXIT_GRACE);
+    if let Ok(Some(error)) = writer_rx.recv_timeout(grace) {
+        return Err(format!("failed to write judge stdin: {error}"));
+    }
+    let output = stdout.finish(grace);
+    let errors = stderr.finish(grace);
     if !status.success() {
-        return Err(format!("judge exited with {status}"));
+        let detail = stderr_tail(&errors);
+        return Err(if detail.is_empty() {
+            format!("judge exited with {status}")
+        } else {
+            format!("judge exited with {status}: {detail}")
+        });
     }
     parse_verdict(&output)
+}
+
+const JUDGE_EXIT_GRACE: Duration = Duration::from_secs(2);
+const JUDGE_TERM_GRACE: Duration = Duration::from_secs(3);
+
+fn kill_process_group(pid: u32) {
+    #[cfg(unix)]
+    {
+        use nix::sys::signal::{Signal, kill};
+        use nix::unistd::Pid;
+        let _ = kill(Pid::from_raw(-(pid as i32)), Signal::SIGKILL);
+    }
+    #[cfg(not(unix))]
+    let _ = pid;
+}
+
+fn terminate_process_group(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        use nix::sys::signal::{Signal, kill};
+        use nix::unistd::Pid;
+        let group = Pid::from_raw(-(child.id() as i32));
+        if kill(group, Signal::SIGTERM).is_ok() {
+            let until = Instant::now() + JUDGE_TERM_GRACE;
+            while Instant::now() < until {
+                if matches!(child.try_wait(), Ok(Some(_))) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            let _ = kill(group, Signal::SIGKILL);
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+const MAX_STDOUT_BYTES: usize = 1 << 20;
+const MAX_STDERR_BYTES: usize = 64 << 10;
+
+struct Captured {
+    data: Arc<Mutex<Vec<u8>>>,
+    done: mpsc::Receiver<()>,
+    limit: usize,
+}
+
+impl Captured {
+    fn start<R: Read + Send + 'static>(stream: Option<R>, limit: usize) -> Self {
+        let data = Arc::new(Mutex::new(Vec::new()));
+        let (tx, done) = mpsc::channel();
+        let sink = Arc::clone(&data);
+        std::thread::spawn(move || {
+            if let Some(mut stream) = stream {
+                let mut chunk = [0u8; 8192];
+                while let Ok(n) = stream.read(&mut chunk) {
+                    if n == 0 {
+                        break;
+                    }
+                    if let Ok(mut buf) = sink.lock() {
+                        buf.extend_from_slice(&chunk[..n]);
+                        if buf.len() > limit.saturating_mul(2) {
+                            let excess = buf.len() - limit;
+                            buf.drain(..excess);
+                        }
+                    }
+                }
+            }
+            let _ = tx.send(());
+        });
+        Self { data, done, limit }
+    }
+
+    fn finish(self, grace: Duration) -> String {
+        let _ = self.done.recv_timeout(grace);
+        self.data
+            .lock()
+            .map(|buf| {
+                let keep = buf.len().saturating_sub(self.limit);
+                String::from_utf8_lossy(&buf[keep..]).into_owned()
+            })
+            .unwrap_or_default()
+    }
+}
+
+fn stderr_tail(stderr: &str) -> String {
+    const MAX: usize = 500;
+    let trimmed = stderr.trim();
+    let start = trimmed.len().saturating_sub(MAX);
+    let start = (start..=trimmed.len())
+        .find(|&i| trimmed.is_char_boundary(i))
+        .unwrap_or(trimmed.len());
+    trimmed[start..].replace('\n', " | ")
 }
 
 fn parse_verdict(output: &str) -> Result<JudgeVerdict, String> {
@@ -124,8 +231,13 @@ mod tests {
     }
 
     fn config(command: String, timeout_seconds: u64) -> CompletionJudgeConfig {
+        let command = if std::path::Path::new(&command).exists() {
+            vec!["sh".to_string(), command]
+        } else {
+            vec![command]
+        };
         CompletionJudgeConfig {
-            command: vec![command],
+            command,
             timeout_seconds,
             ..CompletionJudgeConfig::default()
         }
@@ -166,7 +278,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let cmd = script(&dir, "sleep 5");
         let err = run_judge(&config(cmd, 1), dir.path(), &request()).unwrap_err();
-        assert!(err.contains("timed out"));
+        assert!(err.contains("timed out"), "{err}");
     }
 
     #[test]
@@ -318,5 +430,144 @@ mod tests {
         assert_eq!(judge.max_rejections, 0);
         let cfg: crate::config::RalphConfig = serde_yaml::from_str("event_loop: {}\n").unwrap();
         assert!(cfg.event_loop.completion_judge.is_none());
+    }
+
+    #[test]
+    fn nonzero_exit_reports_stderr_tail() {
+        let dir = TempDir::new().unwrap();
+        let cmd = script(
+            &dir,
+            "cat >/dev/null\necho 'first line' >&2\necho 'git add failed' >&2\nexit 1",
+        );
+        let err = run_judge(&config(cmd, 5), dir.path(), &request()).unwrap_err();
+        assert!(err.contains("exited with"), "{err}");
+        assert!(err.contains("first line | git add failed"), "{err}");
+    }
+
+    #[test]
+    fn stderr_tail_keeps_the_end_and_char_boundaries() {
+        assert_eq!(stderr_tail(""), "");
+        assert_eq!(stderr_tail("  a\nb  "), "a | b");
+        let long = format!("{}é{}", "x".repeat(600), "end");
+        let tail = stderr_tail(&long);
+        assert!(tail.ends_with("éend") || tail.ends_with("end"));
+        assert!(tail.len() <= 502);
+    }
+
+    #[test]
+    fn timeout_applies_when_judge_never_reads_a_large_request() {
+        let dir = TempDir::new().unwrap();
+        let cmd = script(&dir, "sleep 30");
+        let padding = "x".repeat(8 << 20);
+        let big = JudgeRequest {
+            objective: Some(&padding),
+            ..request()
+        };
+        let started = std::time::Instant::now();
+        let err = run_judge(&config(cmd, 1), dir.path(), &big).unwrap_err();
+        assert!(err.contains("timed out"), "{err}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    }
+
+    #[test]
+    fn lingering_child_holding_stdout_does_not_hang_the_loop() {
+        let dir = TempDir::new().unwrap();
+        let cmd = script(
+            &dir,
+            "cat >/dev/null\n(sleep 30 &)\necho '{\"verdict\":\"pass\",\"reason\":\"ok\"}'",
+        );
+        let started = std::time::Instant::now();
+        let verdict = run_judge(&config(cmd, 60), dir.path(), &request()).unwrap();
+        assert_eq!(verdict.verdict, JudgeDecision::Pass);
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    }
+
+    #[test]
+    fn lingering_child_holding_stdin_does_not_hang_the_loop() {
+        let dir = TempDir::new().unwrap();
+        let cmd = script(
+            &dir,
+            "(sleep 30 <&0 &)\necho '{\"verdict\":\"fail\",\"reason\":\"r\"}'",
+        );
+        let padding = "x".repeat(4 << 20);
+        let big = JudgeRequest {
+            objective: Some(&padding),
+            ..request()
+        };
+        let started = std::time::Instant::now();
+        let verdict = run_judge(&config(cmd, 60), dir.path(), &big).unwrap();
+        assert_eq!(verdict.verdict, JudgeDecision::Fail);
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    }
+
+    #[test]
+    fn huge_output_is_bounded_and_the_verdict_still_parses() {
+        let dir = TempDir::new().unwrap();
+        let cmd = script(
+            &dir,
+            "cat >/dev/null\nhead -c 30000000 /dev/zero | tr '\\0' 'y'\necho\nhead -c 3000000 /dev/zero | tr '\\0' 'e' >&2\necho '{\"verdict\":\"fail\",\"reason\":\"tail kept\"}'",
+        );
+        let verdict = run_judge(&config(cmd, 60), dir.path(), &request()).unwrap();
+        assert_eq!(verdict.verdict, JudgeDecision::Fail);
+        assert_eq!(verdict.reason, "tail kept");
+    }
+
+    #[test]
+    fn captured_keeps_only_the_tail() {
+        let data: &[u8] = b"0123456789abcdefghij";
+        let captured = Captured::start(Some(data), 5);
+        assert_eq!(captured.finish(Duration::from_secs(2)), "fghij");
+    }
+
+    #[test]
+    fn timeout_kills_the_whole_process_group() {
+        let dir = TempDir::new().unwrap();
+        let marker = dir.path().join("survived");
+        let cmd = script(
+            &dir,
+            &format!(
+                "cat >/dev/null\nsh -c 'sleep 2; touch {}' &\nsleep 30",
+                marker.display()
+            ),
+        );
+        let err = run_judge(&config(cmd, 1), dir.path(), &request()).unwrap_err();
+        assert!(err.contains("timed out"), "{err}");
+        std::thread::sleep(Duration::from_secs(3));
+        assert!(!marker.exists(), "a judge descendant survived the timeout");
+    }
+
+    #[test]
+    fn timeout_gives_the_judge_a_chance_to_clean_up() {
+        let dir = TempDir::new().unwrap();
+        let marker = dir.path().join("cleaned");
+        let cmd = script(
+            &dir,
+            &format!(
+                "trap 'touch {}; exit 143' TERM\ncat >/dev/null\nsleep 30 &\nwait",
+                marker.display()
+            ),
+        );
+        run_judge(&config(cmd, 3), dir.path(), &request()).unwrap_err();
+        assert!(
+            marker.exists(),
+            "judge did not receive SIGTERM before SIGKILL"
+        );
+    }
+
+    #[test]
+    fn descendants_left_by_a_finished_judge_are_killed() {
+        let dir = TempDir::new().unwrap();
+        let marker = dir.path().join("survived");
+        let cmd = script(
+            &dir,
+            &format!(
+                "cat >/dev/null\nsh -c 'sleep 1; touch {}' >/dev/null 2>&1 &\necho '{{\"verdict\":\"pass\"}}'",
+                marker.display()
+            ),
+        );
+        let verdict = run_judge(&config(cmd, 30), dir.path(), &request()).unwrap();
+        assert_eq!(verdict.verdict, JudgeDecision::Pass);
+        std::thread::sleep(Duration::from_secs(2));
+        assert!(!marker.exists(), "a judge descendant outlived the judge");
     }
 }

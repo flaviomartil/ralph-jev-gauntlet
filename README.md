@@ -41,10 +41,12 @@ The judge collects evidence (commits, `git status`, diff stat, closed tasks, rec
 
 If any answer falls below its threshold, the attempt is rejected right away and names the failing requirements. The critic does not run. If Jev is unreachable, the judge skips this step and goes straight to the critic.
 
+When `RALPH_JEV_VERIFY_CMD` is set (for example `npm test`), the judge runs it in the workspace before asking Jev. A failure rejects the attempt right away with the end of the command's output. A pass goes into the evidence as `verification_run`, which is what Jev needs to answer `verified` with confidence. Everything sent to Jev (command output, events, commits, the objective) first goes through a redactor that masks common token formats, `Bearer` headers, credentials in URLs, private keys and `key=value` pairs whose name looks like a secret.
+
 **3. Blind critique**
 
 1. The judge snapshots the workspace, including uncommitted and untracked files, without touching your index or branch.
-2. The snapshot and `refs/gauntlet/champion` (the best attempt so far) are checked out as temporary git worktrees labeled `A` and `B` at random.
+2. The snapshot and the champion (the best attempt so far, stored at `refs/gauntlet/loop-<loop id>-<id hash>/<requirements digest>`, so each loop and each set of requirements has its own) are exported with `git archive` into plain temporary directories labeled `A` and `B` at random. The copies have no `.git`, and both snapshots use the same fixed author and date, so neither history nor timestamps show which one is newer.
 3. The critic gets the requirements and both directories. It runs the checks and replies with a pass or fail per requirement, a `pick`, and a list of concrete defects.
 4. When `.ralph/gauntlet/bar.md` exists, the critic also has to beat that reference (a named page, repo or document it can open).
 
@@ -59,7 +61,7 @@ Completion rejected by judge: critic: requirements failing: c1 "An <h1> header a
 so this attempt regressed. defects: move <h1>Hello</h1> above <p>hi</p> | test.sh keeps the last match, record the first
 ```
 
-Whenever the attempt wins the blind pick, it becomes the new champion, so every later attempt has to beat the best one so far. The temporary worktrees are removed after every run.
+Whenever the attempt wins the blind pick, it becomes the new champion (with a compare-and-swap, so two judges running at once can't overwrite each other), even if it still fails some requirements: the champion is the best attempt so far, not an approved one. Every later attempt has to beat it, so the loop can't quietly regress while it works toward a pass. The critic must always return a valid `pick`; a missing or unknown pick rejects the attempt. The temporary copies are removed after every run.
 
 ## Other Jev decision points
 
@@ -125,9 +127,12 @@ Environment:
 | `RALPH_GAUNTLET_CRITIC_TIMEOUT_MS` | 600000 | Critic time limit |
 | `RALPH_GAUNTLET_VERIFY_HINT` | unset | How to verify, for example `npm test` |
 | `RALPH_GAUNTLET_ALLOW_TIE` | unset | `1` accepts a tie against the champion |
-| `RALPH_GAUNTLET_WORKDIR` | system temp | Where snapshots and worktrees go |
+| `RALPH_GAUNTLET_CRITIC_ENV_KEEP` | unset | Comma-separated secret-looking variables the critic may still see (for example a token its tests need) |
+| `RALPH_GAUNTLET_WORKDIR` | system temp | Where the snapshot index and exported copies go |
+| `RALPH_JEV_VERIFY_CMD` | unset | Shell command run in the workspace before judging, for example `npm test`. A failure rejects immediately; the result is shown to Jev and becomes the critic's hint |
+| `RALPH_JEV_VERIFY_TIMEOUT_MS` | 300000 | Time limit for the verification command |
 
-The critic runs non-interactively inside throwaway worktrees (`claude -p --permission-mode bypassPermissions` or `codex exec -s workspace-write`), so it can run your tests without asking. It is told not to edit source files, and your working tree is never checked out or modified.
+The critic runs non-interactively inside the throwaway copies (`claude -p --permission-mode bypassPermissions` or `codex exec -s workspace-write`), so it can run your tests without asking. It is told not to edit source files, and your working tree is never checked out or modified. Untracked files that look like secrets (`.env`, `.env.*` except examples, keys and certificates, `id_rsa*`, `.npmrc`, `.netrc`, `credentials.*`, `secrets.*`, `.aws/`, `.ssh/`) are left out of the snapshot, so they are never stored in a champion commit. Secret-like files you already track stay in the commit (they are already in your history) but are removed from the critic's copies, so the critic never sees any of them. The critic also runs with secret-looking environment variables removed (anything named like a token, password, API key, private key or credential), except the login of the critic that is running (`ANTHROPIC_*`/`CLAUDE_*` for `claude`, `OPENAI_*`/`CODEX_*` for `codex`, none for a custom command) and anything listed in `RALPH_GAUNTLET_CRITIC_ENV_KEEP`. It still runs as your user, so treat it like any other agent you allow to run commands. Symlinks that point outside the copy or at a secret-like file are removed too, and the two copies are written in label order, so creation times don't reveal which attempt is newer.
 
 ## Safety bounds
 
@@ -142,7 +147,7 @@ The critic runs non-interactively inside throwaway worktrees (`claude -p --permi
 | `crates/ralph-core` | Event loop, hats, tasks, memories, hooks, completion gate |
 | `crates/ralph-core/src/completion_judge.rs` | Runs the external judge (timeout, verdict parsing) |
 | `crates/ralph-adapters` | Builder backends (Claude, Codex, Gemini, Kiro, Roo, ...) |
-| `jev/ralph-gauntlet-judge.mjs` | Gauntlet judge: Jev screen, snapshot, blind worktrees, critic, champion |
+| `jev/ralph-gauntlet-judge.mjs` | Gauntlet judge: verification, Jev screen, snapshot, blind copies, critic, champion |
 | `jev/lib/gauntlet.mjs` | Requirement parsing, critic prompt, verdict rules |
 | `jev/ralph-jev-judge.mjs` | Jev-only judge, for when you want no critic |
 | `jev/ralph-jev-hook.mjs` | Jev triage and progress hooks |
@@ -164,7 +169,7 @@ The Node suite has about 3,850 tests:
 - **Fuzz tests** on random and corrupted input: parsers never crash and only return well-formed results.
 - **Metamorphic tests**: swapping the A/B labels never changes a verdict, entry order and wording don't matter, and more evidence never makes a verdict worse.
 - **Process tests** that run the real CLIs against a local fake Jev server and check exit codes, stdout contracts and circuit breaker behavior.
-- **Git end-to-end tests** with a scripted critic. They cover snapshots, blind worktrees, champion promotion, cleanup, concurrent runs and unusual file names, and check that your workspace and index are left untouched.
+- **Git end-to-end tests** with a scripted critic. They cover snapshots, blind copies, champion promotion, cleanup, concurrent runs and unusual file names, and check that your workspace and index are left untouched.
 
 ## Credits
 

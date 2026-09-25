@@ -139,9 +139,9 @@ for (let i = 0; i < 140; i++) {
     const style = int(r, 0, 3);
     const body = style === 1 ? JSON.stringify(verdict, null, 2) : JSON.stringify(verdict);
     if (style === 2) lines.push("```json", body, "```");
-    else if (style === 3) lines.push(`Final verdict: ${body} (end)`);
+    else if (style === 3) lines.push(`Final verdict: ${body}`);
     else lines.push(body);
-    for (let k = 0; k < int(r, 0, 3); k++) lines.push(pick(r, ["done.", "Thanks", "", "```"]));
+    for (let k = 0; k < int(r, 0, 3); k++) lines.push(pick(r, ["", "```", "   "]));
     assert.deepEqual(parseCriticOutput(lines.join("\n")), verdict);
   });
 }
@@ -155,6 +155,12 @@ for (const input of parseFailures) {
 
 test("parseCriticOutput accepts an empty criteria list", () => {
   assert.deepEqual(parseCriticOutput('{"criteria":[],"pick":"A"}').criteria, []);
+});
+
+test("parseCriticOutput rejects a provisional verdict followed by other output", () => {
+  assert.throws(() => parseCriticOutput('{"criteria":[],"pick":"A"}\nerror: crashed'), /must end with its verdict/);
+  assert.throws(() => parseCriticOutput('{"criteria":[],"pick":"A"} trailing'), /must end with its verdict/);
+  assert.throws(() => parseCriticOutput('{"criteria":[],"pick":"A"}\n{"note":"later"}'), /must end with its verdict/);
 });
 
 test("parseCriticOutput returns the last verdict when two are present", () => {
@@ -193,14 +199,16 @@ function oracle({ critic, criteria, labels, hasBar, allowTie }) {
   criteria.forEach((_, i) => {
     const id = `c${i + 1}`;
     const entry = entries.find(
-      (c) => (c.version == null || norm(c.version) === labels.candidate) && String(c.id ?? "").trim().toLowerCase() === id,
+      (c) => (norm(c.version) === labels.candidate || (!labels.champion && c.version == null)) && String(c.id ?? "").trim().toLowerCase() === id,
     );
     if (!entry || entry.pass !== true) failedIds.push(id);
   });
   const p = norm(critic.pick);
-  const won = !labels.champion || p === labels.candidate || (allowTie && p === "TIE");
+  const won = labels.champion
+    ? p === labels.candidate || (allowTie && p === "TIE")
+    : p === labels.candidate;
   const bar = !hasBar || critic.beats_bar === true;
-  return { failedIds, won, bar, pass: failedIds.length === 0 && won && bar, promote: !labels.champion || p === labels.candidate };
+  return { failedIds, won, bar, pass: failedIds.length === 0 && won && bar, promote: labels.champion ? p === labels.candidate : won };
 }
 
 function randomCritic(r, n) {
@@ -240,7 +248,7 @@ for (let i = 0; i < 300; i++) {
     if (!expected.pass) {
       const listed = [...result.reason.matchAll(/(c\d+) "/g)].map((m) => m[1]);
       if (result.reason.length < 1790) assert.deepEqual(listed, expected.failedIds);
-      assert.equal(result.reason.includes("regressed"), !expected.won);
+      assert.equal(result.reason.includes("regressed") || result.reason.includes("invalid pick"), !expected.won);
       assert.equal(result.reason.includes("quality bar"), !expected.bar);
     } else {
       assert.match(result.reason, /^critic approved \d+ requirement\(s\)/);
@@ -256,12 +264,12 @@ const decideCases = [
   },
   {
     name: "tie without allowTie is a regression",
-    input: { critic: { criteria: [{ id: "c1", pass: true }], pick: "tie" }, criteria: ["a"], labels: { candidate: "A", champion: "B" }, hasBar: false, allowTie: false },
+    input: { critic: { criteria: [{ id: "c1", version: "A", pass: true }], pick: "tie" }, criteria: ["a"], labels: { candidate: "A", champion: "B" }, hasBar: false, allowTie: false },
     verdict: "fail",
   },
   {
     name: "tie with allowTie passes but does not promote",
-    input: { critic: { criteria: [{ id: "c1", pass: true }], pick: "tie" }, criteria: ["a"], labels: { candidate: "A", champion: "B" }, hasBar: false, allowTie: true },
+    input: { critic: { criteria: [{ id: "c1", version: "A", pass: true }], pick: "tie" }, criteria: ["a"], labels: { candidate: "A", champion: "B" }, hasBar: false, allowTie: true },
     verdict: "pass",
     promote: false,
   },
@@ -316,3 +324,14 @@ for (const c of decideCases) {
     if (c.reason) assert.match(result.reason, c.reason);
   });
 }
+
+test("decide: unlabeled entries do not count for the attempt when two versions are compared", () => {
+  const out = decide({ critic: { criteria: [{ id: "c1", pass: true }], pick: "B" }, criteria: ["x"], labels: { candidate: "B", champion: "A" }, hasBar: false, allowTie: false });
+  assert.equal(out.verdict, "fail");
+  assert.match(out.reason, /c1 "x" \(not reported\)/);
+});
+
+test("decide: unlabeled entries count for the single version", () => {
+  const out = decide({ critic: { criteria: [{ id: "c1", pass: true }], pick: "A" }, criteria: ["x"], labels: { candidate: "A", champion: null }, hasBar: false, allowTie: false });
+  assert.equal(out.verdict, "pass");
+});

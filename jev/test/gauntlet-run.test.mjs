@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { CHAMPION_REF, criticCommand, runGauntlet, snapshot } from "../lib/gauntlet-run.mjs";
-import { git, initRepo, scratchDir } from "./helpers.mjs";
+import { criticCommand, runGauntlet, snapshot } from "../lib/gauntlet-run.mjs";
+import { championSha, git, initRepo, scratchDir } from "./helpers.mjs";
 
 const commandCases = [
   [{}, ["claude", "-p", "--permission-mode", "bypassPermissions", "--add-dir", "/w"]],
@@ -145,7 +145,7 @@ function criticCalls(log) {
 
 function champion(ws) {
   try {
-    return git(ws, ["rev-parse", "-q", "--verify", CHAMPION_REF]);
+    return championSha(ws);
   } catch {
     return null;
   }

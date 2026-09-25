@@ -5047,7 +5047,7 @@
         <path data-edge-from="web" data-edge-to="state" data-edge-label="read" data-edge-key="11" data-edge-id="web-state" data-composition-points="380,650;460,650" d="M 380 650 L 460 650" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         <path data-edge-from="core" data-edge-to="hook" data-edge-label="hooks" data-edge-key="12" data-edge-id="core-hook" data-composition-points="620,489;660,489;660,800;700,800" d="M 620 489 L 652 489 Q 660 489 660 497 L 660 792 Q 660 800 668 800 L 700 800" class="a-security" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
         <path data-edge-from="hook" data-edge-to="jev" data-edge-label="HTTPS" data-edge-key="13" data-edge-id="hook-jev" data-composition-points="840,800;1120,800;1120,290;1080,290" d="M 840 800 L 1112 800 Q 1120 800 1120 792 L 1120 298 Q 1120 290 1112 290 L 1080 290" class="a-security" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="judge" data-edge-to="critic" data-edge-label="worktrees A/B" data-edge-key="14" data-edge-id="judge-critic" data-composition-points="780,260;780,170" d="M 780 260 L 780 170" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="judge" data-edge-to="critic" data-edge-label="blind copies A/B" data-edge-key="14" data-edge-id="judge-critic" data-composition-points="780,260;780,170" d="M 780 260 L 780 170" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="champion" data-edge-to="critic" data-edge-label="baseline" data-edge-key="15" data-edge-id="champion-critic" data-composition-points="920,140;870,140" d="M 920 140 L 870 140" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
 
         <!-- Components -->
@@ -5237,16 +5237,16 @@
         <text data-detail="fine" x="780" y="162" class="t-external" font-size="7" text-anchor="middle">blind A/B</text>
         </g>
 
-        <g id="node-champion" data-node-id="champion" data-node-label="refs/gauntlet/champion" tabindex="0" role="button" aria-label="Focus refs/gauntlet/champion, best attempt so far, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="best attempt so far" data-node-context="Architecture component">
-          <title>refs/gauntlet/champion · best attempt so far · Architecture component</title>
+        <g id="node-champion" data-node-id="champion" data-node-label="Champion ref" tabindex="0" role="button" aria-label="Focus Champion ref, per loop + requirements, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="per loop + requirements" data-node-context="Architecture component">
+          <title>Champion ref · per loop + requirements · Architecture component</title>
           <rect x="920" y="110" width="180" height="60" rx="6" class="c-mask"/>
           <rect x="920" y="110" width="180" height="60" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(926 116) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1010" y="138" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">refs/gauntlet/champion</text>
-        <text data-detail="context" x="1010" y="154" class="t-muted" font-size="9" text-anchor="middle">best attempt so far</text>
+          <text data-node-label="" data-detail-anchor="" x="1010" y="138" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Champion ref</text>
+        <text data-detail="context" x="1010" y="154" class="t-muted" font-size="9" text-anchor="middle">per loop + requirements</text>
         </g>
 
         <!-- Connection labels -->
@@ -5300,9 +5300,9 @@
           <rect x="1103" y="525" width="34" height="14" rx="3" class="c-mask"/>
           <text x="1120" y="535" class="t-security" font-size="8" text-anchor="middle">HTTPS</text>
         </g>
-        <g data-detail="context" data-edge-from="judge" data-edge-to="critic" data-edge-label="worktrees A/B" data-edge-key="14" data-edge-id="judge-critic">
-          <rect x="743.8" y="240" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="780" y="250" class="t-backend" font-size="8" text-anchor="middle">worktrees A/B</text>
+        <g data-detail="context" data-edge-from="judge" data-edge-to="critic" data-edge-label="blind copies A/B" data-edge-key="14" data-edge-id="judge-critic">
+          <rect x="736.6" y="240" width="86.8" height="14" rx="3" class="c-mask"/>
+          <text x="780" y="250" class="t-backend" font-size="8" text-anchor="middle">blind copies A/B</text>
         </g>
         <g data-detail="context" data-edge-from="champion" data-edge-to="critic" data-edge-label="baseline" data-edge-key="15" data-edge-id="champion-critic">
           <rect x="870.8" y="120" width="48.4" height="14" rx="3" class="c-mask"/>

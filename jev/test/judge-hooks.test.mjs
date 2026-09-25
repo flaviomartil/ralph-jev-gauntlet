@@ -61,7 +61,7 @@ for (let i = 0; i < 120; i++) {
   });
 }
 
-test("gatherEvidence collects git and ralph state", () => {
+test("gatherEvidence collects git and ralph state", async () => {
   const ws = initRepo(scratchDir("ev"));
   writeFileSync(join(ws, "a.txt"), "x");
   git(ws, ["add", "."]);
@@ -69,7 +69,7 @@ test("gatherEvidence collects git and ralph state", () => {
   writeFileSync(join(ws, "b.txt"), "y");
   mkdirSync(join(ws, ".ralph"));
   writeFileSync(join(ws, ".ralph", "events.jsonl"), '{"topic":"build.done","payload":"ok"}\n');
-  const ev = gatherEvidence({ objective: "o".repeat(5000), workspace: ws, iteration: 3, rejections: 1, closed_tasks: Array.from({ length: 40 }, (_, k) => `t${k}`) });
+  const ev = await gatherEvidence({ objective: "o".repeat(5000), workspace: ws, iteration: 3, rejections: 1, closed_tasks: Array.from({ length: 40 }, (_, k) => `t${k}`) });
   assert.equal(ev.objective.length, 4000);
   assert.equal(ev.iteration, 3);
   assert.equal(ev.previous_rejections, 1);
@@ -80,8 +80,8 @@ test("gatherEvidence collects git and ralph state", () => {
   assert.deepEqual(ev.recent_events, [{ topic: "build.done", payload: "ok" }]);
 });
 
-test("gatherEvidence outside git returns empty git fields", () => {
-  const ev = gatherEvidence({ objective: "x", workspace: scratchDir("nogit") });
+test("gatherEvidence outside git returns empty git fields", async () => {
+  const ev = await gatherEvidence({ objective: "x", workspace: scratchDir("nogit") });
   assert.equal(ev.recent_commits, "");
   assert.equal(ev.uncommitted_changes, "");
   assert.deepEqual(ev.closed_tasks, []);

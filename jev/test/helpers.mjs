@@ -60,6 +60,14 @@ export function git(cwd, args, env = {}) {
 
 export function initRepo(dir, { commit = true } = {}) {
   git(dir, ["init", "-q"]);
+  git(dir, ["config", "core.excludesFile", "/dev/null"]);
   if (commit) git(dir, ["commit", "-q", "--allow-empty", "-m", "init"]);
   return dir;
+}
+
+export function championSha(dir) {
+  const refs = git(dir, ["for-each-ref", "--format=%(objectname)", "refs/gauntlet/"]).split("\n").filter(Boolean);
+  if (refs.length > 1) throw new Error(`expected one champion ref, found ${refs.length}`);
+  if (!refs.length) throw new Error("no champion ref");
+  return refs[0];
 }

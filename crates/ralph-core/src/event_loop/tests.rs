@@ -5354,7 +5354,7 @@ fn judge_loop(
     let mut config = RalphConfig::default();
     config.core.workspace_root = temp_dir.path().to_path_buf();
     config.event_loop.completion_judge = Some(crate::config::CompletionJudgeConfig {
-        command: vec![script.to_string_lossy().into_owned()],
+        command: vec!["sh".to_string(), script.to_string_lossy().into_owned()],
         timeout_seconds: 5,
         max_rejections,
         fail_closed: false,

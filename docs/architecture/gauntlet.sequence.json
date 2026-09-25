@@ -4,50 +4,244 @@
   "meta": {
     "title": "ralph-jev-gauntlet Completion Gate",
     "output": "gauntlet.html",
-    "viewBox": [820, 820],
+    "viewBox": [
+      820,
+      820
+    ],
     "animation": "trace",
     "quality_profile": "showcase",
     "views": [
-      { "id": "screen", "label": "Jev screen", "focus": ["loop", "judge", "jev"], "note": "Every requirement gets its own yes/no from Jev before any expensive agent runs." },
-      { "id": "critic", "label": "Blind critique", "focus": ["judge", "git", "critic"], "note": "The attempt and the best attempt so far become worktrees A and B in random order; a fresh critic runs the checks and picks one." },
-      { "id": "outcome", "label": "Outcome", "focus": ["judge", "git", "loop", "agent"], "note": "The winner becomes the champion; anything short of a clean win sends the critic's defects back to the agent." }
+      {
+        "id": "screen",
+        "label": "Jev screen",
+        "focus": [
+          "loop",
+          "judge",
+          "jev"
+        ],
+        "note": "Every requirement gets its own yes/no from Jev before any expensive agent runs."
+      },
+      {
+        "id": "critic",
+        "label": "Blind critique",
+        "focus": [
+          "judge",
+          "git",
+          "critic"
+        ],
+        "note": "Attempt and best-so-far are exported without git history as A and B at random; a fresh critic checks both and picks."
+      },
+      {
+        "id": "outcome",
+        "label": "Outcome",
+        "focus": [
+          "judge",
+          "git",
+          "loop",
+          "agent"
+        ],
+        "note": "The winner becomes the champion; anything short of a clean win sends the critic's defects back to the agent."
+      }
     ]
   },
   "participants": [
-    { "id": "agent", "type": "external", "label": "Builder", "sublabel": "agent CLI" },
-    { "id": "loop", "type": "backend", "label": "Event Loop", "sublabel": "ralph-core" },
-    { "id": "judge", "type": "security", "label": "Judge", "sublabel": "gauntlet" },
-    { "id": "jev", "type": "cloud", "label": "Jev", "sublabel": "per requirement" },
-    { "id": "git", "type": "database", "label": "Git", "sublabel": "snapshot + champion" },
-    { "id": "critic", "type": "external", "label": "Critic", "sublabel": "fresh agent" }
+    {
+      "id": "agent",
+      "type": "external",
+      "label": "Builder",
+      "sublabel": "agent CLI"
+    },
+    {
+      "id": "loop",
+      "type": "backend",
+      "label": "Event Loop",
+      "sublabel": "ralph-core"
+    },
+    {
+      "id": "judge",
+      "type": "security",
+      "label": "Judge",
+      "sublabel": "gauntlet"
+    },
+    {
+      "id": "jev",
+      "type": "cloud",
+      "label": "Jev",
+      "sublabel": "per requirement"
+    },
+    {
+      "id": "git",
+      "type": "database",
+      "label": "Git",
+      "sublabel": "snapshot + champion"
+    },
+    {
+      "id": "critic",
+      "type": "external",
+      "label": "Critic",
+      "sublabel": "fresh agent"
+    }
   ],
   "segments": [
-    { "from": 150, "to": 330, "label": "Screen" },
-    { "from": 350, "to": 560, "label": "Blind critique" },
-    { "from": 580, "to": 730, "label": "Outcome" }
+    {
+      "from": 150,
+      "to": 330,
+      "label": "Screen"
+    },
+    {
+      "from": 350,
+      "to": 560,
+      "label": "Blind critique"
+    },
+    {
+      "from": 580,
+      "to": 730,
+      "label": "Outcome"
+    }
   ],
   "messages": [
-    { "id": "claim", "from": "agent", "to": "loop", "y": 185, "label": "LOOP_COMPLETE", "variant": "emphasis" },
-    { "id": "invoke", "from": "loop", "to": "judge", "y": 225, "label": "objective + tasks", "variant": "security" },
-    { "id": "ask", "from": "judge", "to": "jev", "y": 265, "label": "c1..cN met? verified?", "variant": "emphasis" },
-    { "id": "probs", "from": "jev", "to": "judge", "y": 305, "label": "probabilities", "variant": "return" },
-    { "id": "snap", "from": "judge", "to": "git", "y": 385, "label": "snapshot + worktrees A/B", "variant": "default" },
-    { "id": "prompt", "from": "judge", "to": "critic", "y": 430, "label": "requirements + blind A/B", "variant": "emphasis" },
-    { "id": "checks", "from": "critic", "to": "git", "y": 475, "label": "run tests in A and B", "variant": "dashed" },
-    { "id": "pick", "from": "critic", "to": "judge", "y": 530, "label": "per-requirement pass + pick", "variant": "return" },
-    { "id": "promote", "from": "judge", "to": "git", "y": 610, "label": "promote winner to champion", "variant": "dashed" },
-    { "id": "verdict", "from": "judge", "to": "loop", "y": 655, "label": "{verdict, reason}", "variant": "return" },
-    { "id": "resume", "from": "loop", "to": "agent", "y": 700, "label": "fail: task.resume + defects", "variant": "dashed" }
+    {
+      "id": "claim",
+      "from": "agent",
+      "to": "loop",
+      "y": 185,
+      "label": "LOOP_COMPLETE",
+      "variant": "emphasis"
+    },
+    {
+      "id": "invoke",
+      "from": "loop",
+      "to": "judge",
+      "y": 225,
+      "label": "objective + tasks",
+      "variant": "security"
+    },
+    {
+      "id": "ask",
+      "from": "judge",
+      "to": "jev",
+      "y": 265,
+      "label": "c1..cN met? verified?",
+      "variant": "emphasis"
+    },
+    {
+      "id": "probs",
+      "from": "jev",
+      "to": "judge",
+      "y": 305,
+      "label": "probabilities",
+      "variant": "return"
+    },
+    {
+      "id": "snap",
+      "from": "judge",
+      "to": "git",
+      "y": 385,
+      "label": "snapshot + blind copies A/B",
+      "variant": "default"
+    },
+    {
+      "id": "prompt",
+      "from": "judge",
+      "to": "critic",
+      "y": 430,
+      "label": "requirements + blind A/B",
+      "variant": "emphasis"
+    },
+    {
+      "id": "checks",
+      "from": "critic",
+      "to": "git",
+      "y": 475,
+      "label": "run tests in A and B",
+      "variant": "dashed"
+    },
+    {
+      "id": "pick",
+      "from": "critic",
+      "to": "judge",
+      "y": 530,
+      "label": "per-requirement pass + pick",
+      "variant": "return"
+    },
+    {
+      "id": "promote",
+      "from": "judge",
+      "to": "git",
+      "y": 610,
+      "label": "promote winner to champion",
+      "variant": "dashed"
+    },
+    {
+      "id": "verdict",
+      "from": "judge",
+      "to": "loop",
+      "y": 655,
+      "label": "{verdict, reason}",
+      "variant": "return"
+    },
+    {
+      "id": "resume",
+      "from": "loop",
+      "to": "agent",
+      "y": 700,
+      "label": "fail: task.resume + defects",
+      "variant": "dashed"
+    }
   ],
   "activations": [
-    { "participant": "loop", "from": 180, "to": 710, "type": "backend" },
-    { "participant": "judge", "from": 220, "to": 660, "type": "security" },
-    { "participant": "jev", "from": 260, "to": 310, "type": "cloud" },
-    { "participant": "critic", "from": 425, "to": 535, "type": "external" }
+    {
+      "participant": "loop",
+      "from": 180,
+      "to": 710,
+      "type": "backend"
+    },
+    {
+      "participant": "judge",
+      "from": 220,
+      "to": 660,
+      "type": "security"
+    },
+    {
+      "participant": "jev",
+      "from": 260,
+      "to": 310,
+      "type": "cloud"
+    },
+    {
+      "participant": "critic",
+      "from": 425,
+      "to": 535,
+      "type": "external"
+    }
   ],
   "cards": [
-    { "dot": "emerald", "title": "Pass", "items": ["Critic passes every requirement", "Attempt beats the champion blind", "Beats bar.md when a bar is set"] },
-    { "dot": "rose", "title": "Fail", "items": ["Jev fails a requirement: no critic call", "Critic defects go back as task.resume", "Regression vs champion is rejected"] },
-    { "dot": "orange", "title": "Brakes", "items": ["max_rejections: 0 keeps looping", "max_iterations and max_cost_usd stop it", "Jev outage skips to the critic"] }
+    {
+      "dot": "emerald",
+      "title": "Pass",
+      "items": [
+        "Critic passes every requirement",
+        "Attempt beats the champion blind",
+        "Beats bar.md when a bar is set"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Fail",
+      "items": [
+        "Jev fails a requirement: no critic call",
+        "Critic defects go back as task.resume",
+        "Regression vs champion is rejected"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Brakes",
+      "items": [
+        "max_rejections: 0 keeps looping",
+        "max_iterations and max_cost_usd stop it",
+        "Jev outage skips to the critic"
+      ]
+    }
   ]
 }

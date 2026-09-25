@@ -109,7 +109,7 @@ for v in A B; do
 done
 if grep -rq v2 "$PWD"/*/app.txt 2>/dev/null; then pass=true; else pass=false; fi
 echo "critic ran"
-echo "{\\"criteria\\":[{\\"id\\":\\"c1\\",\\"pass\\":$pass}],\\"pick\\":\\"$new\\",\\"beats_bar\\":null,\\"defects\\":[\\"app.txt still v1\\"]}"
+echo "{\\"criteria\\":[{\\"id\\":\\"c1\\",\\"version\\":\\"$new\\",\\"pass\\":$pass}],\\"pick\\":\\"$new\\",\\"beats_bar\\":null,\\"defects\\":[\\"app.txt still v1\\"]}"
 `,
   );
   chmodSync(critic, 0o755);
@@ -134,12 +134,12 @@ echo "{\\"criteria\\":[{\\"id\\":\\"c1\\",\\"pass\\":$pass}],\\"pick\\":\\"$new\
   const first = judge();
   assert.equal(first.verdict, "fail");
   assert.match(first.reason, /c1/);
-  const champion1 = run("git", ["rev-parse", "refs/gauntlet/champion"], ws);
+  const champion1 = run("git", ["for-each-ref", "--format=%(objectname)", "refs/gauntlet/"], ws);
 
   writeFileSync(join(ws, "app.txt"), "v2\n");
   const second = judge();
   assert.equal(second.verdict, "pass", second.reason);
-  assert.notEqual(run("git", ["rev-parse", "refs/gauntlet/champion"], ws), champion1);
+  assert.notEqual(run("git", ["for-each-ref", "--format=%(objectname)", "refs/gauntlet/"], ws), champion1);
   assert.equal(run("git", ["worktree", "list"], ws).split("\n").length, 1);
   assert.equal(run("git", ["status", "--short"], ws), "?? app.txt");
 });

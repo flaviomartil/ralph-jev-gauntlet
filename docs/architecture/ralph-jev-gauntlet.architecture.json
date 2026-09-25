@@ -264,8 +264,8 @@
     {
       "id": "champion",
       "type": "database",
-      "label": "refs/gauntlet/champion",
-      "sublabel": "best attempt so far",
+      "label": "Champion ref",
+      "sublabel": "per loop + requirements",
       "pos": [
         920,
         110
@@ -417,7 +417,7 @@
       "id": "judge-critic",
       "from": "judge",
       "to": "critic",
-      "label": "worktrees A/B",
+      "label": "blind copies A/B",
       "variant": "emphasis"
     },
     {

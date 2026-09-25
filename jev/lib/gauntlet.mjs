@@ -164,10 +164,17 @@ export function parseCriticOutput(text) {
   for (let i = source.lastIndexOf("{"); i >= 0 && attempts < MAX_PARSE_ATTEMPTS; i = source.lastIndexOf("{", i - 1), attempts++) {
     const candidate = balancedObjectAt(source, i);
     if (!candidate) continue;
+    let parsed;
     try {
-      const parsed = JSON.parse(candidate);
-      if (parsed && typeof parsed === "object" && Array.isArray(parsed.criteria)) return parsed;
-    } catch {}
+      parsed = JSON.parse(candidate);
+    } catch {
+      continue;
+    }
+    if (parsed && typeof parsed === "object" && Array.isArray(parsed.criteria)) {
+      const after = source.slice(i + candidate.length).replace(/```(?:json)?/g, "").trim();
+      if (after) throw new Error("critic output must end with its verdict JSON");
+      return parsed;
+    }
     if (i === 0) break;
   }
   throw new Error("critic produced no verdict JSON");
@@ -179,7 +186,8 @@ function label(value) {
 
 export function decide({ critic, criteria, labels, hasBar, allowTie }) {
   const entries = Array.isArray(critic?.criteria) ? critic.criteria.filter((c) => c && typeof c === "object") : [];
-  const mine = entries.filter((c) => c.version === undefined || c.version === null || label(c.version) === labels.candidate);
+  const unlabeled = (c) => c.version === undefined || c.version === null;
+  const mine = entries.filter((c) => label(c.version) === labels.candidate || (!labels.champion && unlabeled(c)));
   const failed = criteria
     .map((text, i) => {
       const entry = mine.find((c) => String(c.id ?? "").trim().toLowerCase() === `c${i + 1}`);
@@ -187,14 +195,18 @@ export function decide({ critic, criteria, labels, hasBar, allowTie }) {
     })
     .filter(Boolean);
   const pick = label(critic?.pick);
-  const candidateWon = !labels.champion || pick === labels.candidate || (allowTie === true && pick === "TIE");
+  const candidateWon = labels.champion
+    ? pick === labels.candidate || (allowTie === true && pick === "TIE")
+    : pick === labels.candidate;
   const beatsBar = !hasBar || critic?.beats_bar === true;
-  const promote = !labels.champion || pick === labels.candidate;
+  const promote = labels.champion ? pick === labels.candidate : candidateWon;
   const problems = [];
   if (failed.length) {
     problems.push(`critic: requirements failing: ${failed.map((f) => `${f.id} "${truncate(f.text, 80)}" (${truncate(f.evidence, 160)})`).join("; ")}`);
   }
-  if (!candidateWon) problems.push("critic: blind comparison preferred the previous best attempt, so this attempt regressed");
+  if (!candidateWon) {
+    problems.push(labels.champion ? "critic: blind comparison preferred the previous best attempt, so this attempt regressed" : `critic: invalid pick ${JSON.stringify(critic?.pick)} for a single version`);
+  }
   if (!beatsBar) problems.push("critic: does not beat the quality bar yet");
   const rawDefects = Array.isArray(critic?.defects) ? critic.defects : typeof critic?.defects === "string" ? [critic.defects] : [];
   const defects = rawDefects.filter((d) => d !== null && d !== undefined && String(d).trim()).slice(0, 5).map((d) => truncate(String(d), 200));

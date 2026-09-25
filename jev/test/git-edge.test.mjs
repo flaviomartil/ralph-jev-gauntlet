@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { CHAMPION_REF, runGauntlet, snapshot } from "../lib/gauntlet-run.mjs";
-import { git, initRepo, scratchDir } from "./helpers.mjs";
+import { runGauntlet, snapshot } from "../lib/gauntlet-run.mjs";
+import { championSha, git, initRepo, scratchDir } from "./helpers.mjs";
 
 function tree(ws, sha) {
   return git(ws, ["ls-tree", "-r", "-z", "--name-only", sha]).split("\0").filter(Boolean).sort();
@@ -152,7 +152,7 @@ test("concurrent gauntlet runs in one repository do not collide", async () => {
   });
   assert.deepEqual(readdirSync(work), []);
   assert.equal(git(ws, ["worktree", "list"]).split("\n").length, 1);
-  assert.ok(git(ws, ["rev-parse", CHAMPION_REF]));
+  assert.ok(championSha(ws));
 });
 
 test("gauntlet run leaves no worktree metadata behind", async () => {
@@ -179,7 +179,7 @@ test("gauntlet champion ref survives git gc", async () => {
   writeFileSync(join(ws, "a.txt"), "a");
   const env = { ...process.env, RALPH_GAUNTLET_CRITIC_CMD: JSON.stringify([fakeCritic(root)]), RALPH_GAUNTLET_WORKDIR: root };
   await noJev(() => runGauntlet({ objective: "a", workspace: ws }, env));
-  const champ = git(ws, ["rev-parse", CHAMPION_REF]);
+  const champ = championSha(ws);
   git(ws, ["gc", "-q", "--prune=now"]);
   assert.equal(git(ws, ["cat-file", "-t", champ]), "commit");
   assert.equal(git(ws, ["show", `${champ}:a.txt`]), "a");
